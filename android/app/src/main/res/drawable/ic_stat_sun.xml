@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome notification icon: the Lapor Yuk sunrise mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M6.84,15.72 A5.16,5.16 0 0 1 17.16,15.72 Z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.92" android:strokeLineCap="round"
+        android:pathData="M4.8,16.68 L19.2,16.68" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M12,8.88 L12,6.96 M6.08,12.3 L4.41,11.34 M17.92,12.3 L19.59,11.34" />
+</vector>

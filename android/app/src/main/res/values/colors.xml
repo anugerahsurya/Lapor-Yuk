@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same as kLogoBlue in lib/ui/widgets/logo.dart: the Flutter opening
+         animation starts on this colour, so the handoff is invisible. -->
+    <color name="splash_bg">#2F5FEA</color>
+	<color name="ic_launcher_background">#2F5FEA</color>
+</resources>
