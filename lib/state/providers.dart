@@ -387,29 +387,16 @@ class GoogleUserNotifier extends Notifier<GoogleUser?> {
     final acc = await GoogleAccount.restore();
     if (acc == null) return;
     state = _from(acc);
-    await _joinChat();
   }
 
   Future<void> connect() async {
     final acc = await GoogleAccount.connect();
     state = _from(acc);
-    await _joinChat();
   }
 
   Future<void> disconnect() async {
-    await ChatService.signOut();
     await GoogleAccount.disconnect();
     state = null;
-  }
-
-  /// Synced users can chat: sign in to Supabase with the same Google identity.
-  Future<void> _joinChat() async {
-    final s = ref.read(settingsProvider);
-    try {
-      await ChatService.signIn(profile: s.profile, avatar: s.avatar);
-    } catch (_) {
-      // Chat is optional; Drive keeps working without it.
-    }
   }
 }
 

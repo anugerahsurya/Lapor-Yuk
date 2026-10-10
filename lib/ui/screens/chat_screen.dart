@@ -13,15 +13,33 @@ import '../widgets/common.dart';
 
 /// Rooms: "Ruang Umum" for everyone + direct messages with other users who
 /// connected their Google account.
-class ChatHomeScreen extends ConsumerWidget {
+class ChatHomeScreen extends ConsumerStatefulWidget {
   const ChatHomeScreen({super.key, required this.openProfile});
   final VoidCallback openProfile;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatHomeScreen> createState() => _ChatHomeScreenState();
+}
+
+class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
+  bool _joining = false;
+
+  Future<void> _join() async {
+    setState(() => _joining = true);
+    try {
+      final s = ref.read(settingsProvider);
+      await ChatService.signIn(profile: s.profile, avatar: s.avatar);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal bergabung: $e', icon: Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _joining = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final c = context.c;
-    final user = ref.watch(googleUserProvider);
-    final ready = Env.chatReady && user != null && ChatService.signedIn;
+    final ready = Env.chatReady && ChatService.signedIn;
 
     return Scaffold(
       appBar: AppBar(
@@ -41,19 +59,12 @@ class ChatHomeScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(24),
                 child: EmptyState(
                   icon: Icons.forum_outlined,
-                  title: Env.chatReady ? 'Hubungkan akun Google dulu' : 'Chat belum dikonfigurasi',
+                  title: Env.chatReady ? 'Gabung ke chat Lapor Yuk' : 'Chat belum dikonfigurasi',
                   message: Env.chatReady
-                      ? 'Chat tersedia untuk pengguna yang sudah menghubungkan Google Drive.'
+                      ? 'Namamu, jabatan, dan satker dari Profil akan terlihat oleh pengguna lain. Tidak perlu akun Google.'
                       : 'Build ini belum berisi kunci Supabase.',
                   action: Env.chatReady
-                      ? AppButton(
-                          label: 'Buka Profil',
-                          icon: Icons.link_rounded,
-                          onTap: () {
-                            Navigator.pop(context);
-                            openProfile();
-                          },
-                        )
+                      ? AppButton(label: 'Gabung chat', icon: Icons.login_rounded, busy: _joining, onTap: _join)
                       : null,
                 ),
               ),

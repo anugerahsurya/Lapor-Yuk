@@ -223,7 +223,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
             ),
           ),
           const SizedBox(height: 24),
-          const SectionLabel('Google Drive & Chat'),
+          const SectionLabel('Google Drive'),
           const _GoogleCard(),
           const SizedBox(height: 24),
           const SectionLabel('Pengingat'),
@@ -537,7 +537,7 @@ class _GoogleCardState extends ConsumerState<_GoogleCard> {
           const SizedBox(height: 12),
           Text(
             user == null
-                ? 'Setelah terhubung, tombol Sinkron di tab Kegiatan mengunggah bukti dukung ke folder "SKP ${name.isEmpty ? '<nama>' : name}" (bisa dikomentari siapa pun yang punya link), dan kamu bisa chat dengan pengguna Lapor Yuk lain.'
+                ? 'Setelah terhubung, tombol Sinkron di tab Kegiatan mengunggah bukti dukung ke folder "SKP ${name.isEmpty ? '<nama>' : name}" (bisa dikomentari siapa pun yang punya link).'
                 : 'Folder Drive: "SKP $name" · siapa pun dengan link bisa berkomentar. Lapor Yuk hanya bisa melihat file yang ia unggah sendiri.',
             style: context.t.bodySmall,
           ),

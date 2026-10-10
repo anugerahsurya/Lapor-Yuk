@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kebijakan Privasi · Lapor Yuk</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root { --brand: #2F5FEA; --ink: #111A33; --muted: #5d6781; --bg: #F4F6FB; --card: #fff; --line: #E1E6F0; }
+    @media (prefers-color-scheme: dark) { :root { --ink: #E8EDF7; --muted: #9aa5bf; --bg: #0A0F1C; --card: #121A2C; --line: #222D46; } }
+    body { margin: 0; font-family: "Plus Jakarta Sans", system-ui, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.65; }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 18px 64px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 28px 24px; }
+    a { color: var(--brand); }
+    h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: -.6px; }
+    h2 { font-size: 17px; margin: 26px 0 6px; }
+    p, li { color: var(--muted); font-size: 15px; }
+    .top { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; text-decoration: none; color: var(--ink); font-weight: 800; }
+    .top svg { width: 32px; height: 32px; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="top" href="./"><svg viewBox="0 0 100 100"><rect width="100" height="100" rx="23" fill="#2F5FEA"/><g fill="#fff"><path d="M28.5 65.5a21.5 21.5 0 0 1 43 0z"/><rect x="18" y="65.5" width="64" height="8" rx="4"/><rect x="46.25" y="29" width="7.5" height="8" rx="3.75"/><rect x="46.25" y="29" width="7.5" height="8" rx="3.75" transform="rotate(-60 50 65.5)"/><rect x="46.25" y="29" width="7.5" height="8" rx="3.75" transform="rotate(60 50 65.5)"/></g><path d="M41 56l6 5 12-11.5" fill="none" stroke="#2F5FEA" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>Lapor Yuk</a>
+    <div class="card">
+      <h1>Kebijakan Privasi</h1>
+      <p>Berlaku sejak 10 Oktober 2026.</p>
+
+      <h2>Data di perangkat</h2>
+      <p>Profil (nama, NIP, jabatan, satuan kerja), kegiatan, foto, dokumen, rekap PDF, dan tugas To Do disimpan di perangkatmu sendiri. Lapor Yuk tidak memiliki server untuk data tersebut.</p>
+
+      <h2>Google Drive</h2>
+      <p>Jika kamu menghubungkan akun Google, Lapor Yuk meminta izin <code>drive.file</code>. Dengan izin ini aplikasi hanya dapat membuat dan mengelola file yang ia unggah sendiri ke folder "SKP &lt;nama&gt;" di Drive milikmu, dan tidak dapat membaca file lain. Folder tersebut dibagikan sebagai <em>pengomentar</em> kepada siapa pun yang memegang link-nya agar bisa dilampirkan pada SKP. Kamu dapat mencabut akses kapan saja di <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+
+      <h2>Chat</h2>
+      <p>Jika kamu bergabung ke chat, nama, jabatan, satuan kerja, avatar, dan pesan yang kamu kirim disimpan di layanan Supabase agar dapat dibaca pengguna lain. Pesan pribadi hanya dapat dibaca oleh kedua peserta percakapan.</p>
+
+      <h2>Lokasi & kamera</h2>
+      <p>Lokasi dan kamera hanya dipakai untuk membuat watermark dan geotag pada foto bukti dukung. Alamat diperoleh dari layanan geocoding bawaan Android saat perangkat online.</p>
+
+      <h2>Kontak</h2>
+      <p>Pertanyaan tentang privasi dapat diajukan melalui <a href="https://github.com/anugerahsurya/Lapor-Yuk/issues">GitHub Issues</a>.</p>
+    </div>
+  </main>
+</body>
+</html>

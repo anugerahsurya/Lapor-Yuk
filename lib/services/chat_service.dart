@@ -2,7 +2,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
 import '../data/models.dart';
-import 'google_account.dart';
 
 class ChatProfile {
   const ChatProfile({required this.id, required this.name, this.unit, this.position, this.avatar});
@@ -34,7 +33,7 @@ class ChatMessage {
   );
 }
 
-/// Chat between users who connected their Google account. Supabase holds
+/// Chat between Lapor Yuk users (anonymous Supabase auth). Supabase holds
 /// only chat data (profiles + messages); everything else stays on device.
 /// Schema & row-level security: supabase/migrations/*_chat.sql
 abstract final class ChatService {
@@ -52,14 +51,12 @@ abstract final class ChatService {
   static String? get uid => _ready ? _db.auth.currentUser?.id : null;
   static bool get signedIn => uid != null;
 
+  /// Joins chat with an anonymous Supabase identity (independent of Google).
+  /// The session persists on the device, so the identity stays the same.
   static Future<void> signIn({required Profile profile, required String avatar}) async {
     await init();
-    if (!_ready) return;
-    if (!signedIn) {
-      final token = GoogleAccount.idToken();
-      if (token == null) throw StateError('ID token Google tidak tersedia.');
-      await _db.auth.signInWithIdToken(provider: OAuthProvider.google, idToken: token);
-    }
+    if (!_ready) throw StateError('Chat belum dikonfigurasi (SUPABASE_ANON_KEY kosong).');
+    if (!signedIn) await _db.auth.signInAnonymously();
     await updateProfile(profile: profile, avatar: avatar);
   }
 

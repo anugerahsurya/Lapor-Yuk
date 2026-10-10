@@ -6,8 +6,7 @@ import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 import '../core/env.dart';
 
 /// One Google account per device, chosen freely by the user. Used for Drive
-/// sync (drive.file: the app only sees files it created) and as the identity
-/// for chat.
+/// sync (drive.file: the app only sees files it created).
 abstract final class GoogleAccount {
   static const scopes = [drive.DriveApi.driveFileScope];
   static bool _init = false;
@@ -65,7 +64,4 @@ abstract final class GoogleAccount {
         await acc.authorizationClient.authorizeScopes(scopes);
     return auth.authClient(scopes: scopes);
   }
-
-  /// ID token for Supabase sign-in (requires serverClientId).
-  static String? idToken() => _account?.authentication.idToken;
 }
