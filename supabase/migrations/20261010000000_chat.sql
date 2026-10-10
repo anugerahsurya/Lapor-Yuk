@@ -65,6 +65,14 @@ drop policy if exists "chat: delete own" on public.chat;
 create policy "chat: delete own"
   on public.chat for delete to authenticated using (sender = (select auth.uid()));
 
+-- New projects don't auto-grant table access to API roles; RLS above still
+-- decides which rows each user can touch. anon gets nothing.
+grant select, insert, update, delete on public.users to authenticated;
+grant select, insert, delete on public.chat to authenticated;
+grant usage on all sequences in schema public to authenticated;
+-- TRUNCATE ignores RLS; API roles never need these.
+revoke truncate, references, trigger on public.users, public.chat from anon, authenticated;
+
 -- Live updates for the chat screens.
 do $$
 begin
