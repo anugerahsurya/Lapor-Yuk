@@ -12,7 +12,8 @@ import '../widgets/avatar.dart';
 import '../widgets/common.dart';
 
 /// Rooms: "Ruang Umum" for everyone + direct messages with other users who
-/// connected their Google account.
+/// synced their device. "Sync" registers this device in the users table;
+/// the Online switch controls whether others see it as online.
 class ChatHomeScreen extends ConsumerStatefulWidget {
   const ChatHomeScreen({super.key, required this.openProfile});
   final VoidCallback openProfile;
@@ -22,17 +23,34 @@ class ChatHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
-  bool _joining = false;
+  bool _syncing = false;
+  Stream<ChatProfile?>? _me;
 
-  Future<void> _join() async {
-    setState(() => _joining = true);
+  @override
+  void initState() {
+    super.initState();
+    if (ChatService.signedIn) _me = ChatService.me();
+  }
+
+  Future<void> _sync() async {
+    setState(() => _syncing = true);
     try {
       final s = ref.read(settingsProvider);
-      await ChatService.signIn(profile: s.profile, avatar: s.avatar);
+      await ChatService.sync(profile: s.profile, avatar: s.avatar);
+      _me ??= ChatService.me();
+      if (mounted) toast(context, 'Tersinkron. Kamu terdaftar di chat.', icon: Icons.cloud_done_rounded);
     } catch (e) {
-      if (mounted) toast(context, 'Gagal bergabung: $e', icon: Icons.error_outline_rounded);
+      if (mounted) toast(context, 'Gagal sinkron: $e', icon: Icons.error_outline_rounded);
     } finally {
-      if (mounted) setState(() => _joining = false);
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  Future<void> _setOnline(bool on) async {
+    try {
+      await ChatService.setOnline(on);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal mengubah status: $e', icon: Icons.error_outline_rounded);
     }
   }
 
@@ -52,6 +70,13 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
         leadingWidth: 60,
         title: Text('Chat', style: context.t.titleLarge),
         centerTitle: true,
+        actions: [
+          if (ready)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: IconBtn(icon: Icons.sync_rounded, tooltip: 'Sync profil', onTap: _syncing ? null : _sync),
+            ),
+        ],
       ),
       body: !ready
           ? Center(
@@ -59,12 +84,12 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
                 padding: const EdgeInsets.all(24),
                 child: EmptyState(
                   icon: Icons.forum_outlined,
-                  title: Env.chatReady ? 'Gabung ke chat Lapor Yuk' : 'Chat belum dikonfigurasi',
+                  title: Env.chatReady ? 'Sync untuk mulai chat' : 'Chat belum dikonfigurasi',
                   message: Env.chatReady
-                      ? 'Namamu, jabatan, dan satker dari Profil akan terlihat oleh pengguna lain. Tidak perlu akun Google.'
+                      ? 'Perangkat ini akan terdaftar sebagai pengguna. Namamu, jabatan, dan satker dari Profil terlihat oleh pengguna lain. Tidak perlu akun Google.'
                       : 'Build ini belum berisi kunci Supabase.',
                   action: Env.chatReady
-                      ? AppButton(label: 'Gabung chat', icon: Icons.login_rounded, busy: _joining, onTap: _join)
+                      ? AppButton(label: 'Sync & online', icon: Icons.sync_rounded, busy: _syncing, onTap: _sync)
                       : null,
                 ),
               ),
@@ -76,6 +101,8 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
                   children: [
+                    _OnlineCard(me: _me, onChanged: _setOnline),
+                    const SizedBox(height: 12),
                     AppCard(
                       onTap: () =>
                           Navigator.of(context)
@@ -110,7 +137,10 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
                       ),
                     ).animate().fadeIn(duration: 300.ms).slideY(begin: .1, end: 0),
                     const SizedBox(height: 22),
-                    SectionLabel('Pengguna · ${people.length}'),
+                    SectionLabel(
+                      'Pengguna · ${people.length}'
+                      '${people.any((p) => p.onlineNow) ? ' · ${people.where((p) => p.onlineNow).length} online' : ''}',
+                    ),
                     if (snap.connectionState == ConnectionState.waiting)
                       const Center(
                         child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()),
@@ -119,7 +149,7 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
                       const EmptyState(
                         icon: Icons.person_search_rounded,
                         title: 'Belum ada pengguna lain',
-                        message: 'Ajak rekan kerja memasang Lapor Yuk dan menghubungkan Google Drive.',
+                        message: 'Ajak rekan kerja memasang Lapor Yuk lalu menekan Sync di menu Chat.',
                       )
                     else
                       for (final (i, p) in people.indexed)
@@ -134,7 +164,7 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
                             padding: const EdgeInsets.all(12),
                             child: Row(
                               children: [
-                                _Pic(avatar: p.avatar, size: 44),
+                                _Pic(avatar: p.avatar, size: 44, online: p.onlineNow),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -142,7 +172,11 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
                                     children: [
                                       Text(p.name, style: context.t.titleSmall),
                                       Text(
-                                        [p.position, p.unit].where((e) => (e ?? '').isNotEmpty).join(' · '),
+                                        [
+                                          p.onlineNow ? 'Online' : _seen(p.lastSeen),
+                                          p.position,
+                                          p.unit,
+                                        ].where((e) => (e ?? '').isNotEmpty).join(' · '),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: context.t.bodySmall,
@@ -163,21 +197,96 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
   }
 }
 
-class _Pic extends StatelessWidget {
-  const _Pic({required this.avatar, required this.size});
-  final String? avatar;
-  final double size;
+String? _seen(DateTime? at) {
+  if (at == null) return null;
+  final d = DateTime.now().difference(at);
+  if (d.inMinutes < 60) return 'Aktif ${d.inMinutes.clamp(1, 59)} mnt lalu';
+  if (d.inHours < 24) return 'Aktif ${d.inHours} jam lalu';
+  return 'Aktif ${fmtDateShort(at)}';
+}
+
+/// This device's own Online/Offline switch.
+class _OnlineCard extends StatelessWidget {
+  const _OnlineCard({required this.me, required this.onChanged});
+  final Stream<ChatProfile?>? me;
+  final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) => ClipOval(
-    child: Image.asset(
-      avatarAsset(avatars.contains(avatar) ? avatar! : 'sun'),
-      width: size,
-      height: size,
-      fit: BoxFit.cover,
-      cacheWidth: (size * 3).round(),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return StreamBuilder<ChatProfile?>(
+      stream: me,
+      builder: (context, snap) {
+        final on = snap.data?.isOnline ?? false;
+        return AppCard(
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(color: on ? c.success : c.muted, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(on ? 'Kamu online' : 'Kamu offline', style: context.t.titleSmall),
+                    Text(
+                      on ? 'Pengguna lain melihatmu sedang aktif' : 'Kamu tetap bisa membaca dan mengirim pesan',
+                      style: context.t.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Switch(value: on, onChanged: snap.data != null ? onChanged : null),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _Pic extends StatelessWidget {
+  const _Pic({required this.avatar, required this.size, this.online = false});
+  final String? avatar;
+  final double size;
+  final bool online;
+
+  @override
+  Widget build(BuildContext context) {
+    final pic = ClipOval(
+      child: Image.asset(
+        avatarAsset(avatars.contains(avatar) ? avatar! : 'sun'),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        cacheWidth: (size * 3).round(),
+      ),
+    );
+    if (!online) return pic;
+    final dot = size * .28;
+    return Stack(
+      children: [
+        pic,
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: Container(
+            width: dot,
+            height: dot,
+            decoration: BoxDecoration(
+              color: context.c.success,
+              shape: BoxShape.circle,
+              border: Border.all(color: context.c.surface, width: 2),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class ChatRoomScreen extends ConsumerStatefulWidget {
