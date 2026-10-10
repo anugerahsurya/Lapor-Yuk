@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dates.dart';
+import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
@@ -70,7 +71,9 @@ class SkpCopyCard extends ConsumerWidget {
           Divider(color: c.line),
           row('CAPAIAN', a.achievement, copyText: a.achievement),
           Divider(color: c.line),
-          if (monthLinks.isEmpty)
+          if (monthLinks.isEmpty && !Env.googleReady)
+            row('BUKTI DUKUNG', 'Belum tersedia')
+          else if (monthLinks.isEmpty)
             row('BUKTI DUKUNG', 'Sinkron bulan ini ke Google Drive untuk mendapatkan link')
           else
             for (final e in monthLinks.entries)

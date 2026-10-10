@@ -223,9 +223,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
             ),
           ),
           const SizedBox(height: 24),
-          const SectionLabel('Google Drive'),
-          const _GoogleCard(),
-          const SizedBox(height: 24),
+          // Hidden until GOOGLE_WEB_CLIENT_ID is set in env.json.
+          if (Env.googleReady) ...[const SectionLabel('Google Drive'), const _GoogleCard(), const SizedBox(height: 24)],
           const SectionLabel('Pengingat'),
           AppCard(
             child: Column(

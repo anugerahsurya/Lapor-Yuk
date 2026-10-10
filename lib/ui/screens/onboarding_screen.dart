@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../services/location_service.dart';
@@ -241,7 +242,8 @@ class _Welcome extends StatelessWidget {
         ),
         point(1, Icons.photo_camera_rounded, 'Foto ber-watermark', 'Nama, waktu, lokasi, dan geotag langsung di foto'),
         point(2, Icons.picture_as_pdf_rounded, 'Rekap PDF bulanan', 'Siap ditandatangani dan dilaporkan'),
-        point(3, Icons.cloud_upload_rounded, 'Sinkron Google Drive', 'Link bukti dukung siap disalin untuk SKP'),
+        if (Env.googleReady)
+          point(3, Icons.cloud_upload_rounded, 'Sinkron Google Drive', 'Link bukti dukung siap disalin untuk SKP'),
         point(4, Icons.wifi_off_rounded, 'Bekerja tanpa internet', 'Semua data tersimpan di HP-mu'),
       ],
     );
