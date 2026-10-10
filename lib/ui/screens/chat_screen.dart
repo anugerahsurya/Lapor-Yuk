@@ -37,7 +37,7 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
     try {
       final s = ref.read(settingsProvider);
       await ChatService.sync(profile: s.profile, avatar: s.avatar);
-      _me ??= ChatService.me();
+      _me = ChatService.me(); // fresh stream: an older one may predate the row
       if (mounted) toast(context, 'Tersinkron. Kamu terdaftar di chat.', icon: Icons.cloud_done_rounded);
     } catch (e) {
       if (mounted) toast(context, 'Gagal sinkron: $e', icon: Icons.error_outline_rounded);
@@ -49,6 +49,7 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
   Future<void> _setOnline(bool on) async {
     try {
       await ChatService.setOnline(on);
+      if (mounted) setState(() => _me = ChatService.me());
     } catch (e) {
       if (mounted) toast(context, 'Gagal mengubah status: $e', icon: Icons.error_outline_rounded);
     }
