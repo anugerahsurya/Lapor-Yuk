@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Unduh Lapor Yuk</title>
-  <meta name="description" content="Unduh Lapor Yuk untuk Android: catat kegiatan harian, foto bukti ber-watermark, rekap PDF, dan salin ke SKP sekali ketuk." />
+  <title>Unduh Lapor Yuk & Ituang</title>
+  <meta name="description" content="Unduh Lapor Yuk dan Ituang untuk Android: catat kegiatan harian untuk SKP, dan catat keuangan pribadi 100% offline." />
   <meta name="theme-color" content="#6FA6EC" />
-  <meta property="og:title" content="Lapor Yuk" />
-  <meta property="og:description" content="Lapor kegiatan, tanpa ribet. Unduh untuk Android." />
+  <meta property="og:title" content="Lapor Yuk & Ituang" />
+  <meta property="og:description" content="Lapor kegiatan & catat keuangan, tanpa ribet. Unduh untuk Android." />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -88,7 +88,9 @@
     main {
       position: relative; z-index: 1;
       min-height: 100svh;
-      display: grid; place-items: center;
+      display: grid; place-items: center; align-content: center; gap: 18px;
+      grid-template-columns: minmax(0, 420px);
+      justify-content: center;
       padding: max(24px, env(safe-area-inset-top)) 18px 26vh;
     }
     .card {
@@ -123,8 +125,9 @@
     .btn svg { width: 21px; height: 21px; }
     .meta { margin-top: 12px; font-size: 12.5px; color: var(--muted); display: flex; justify-content: center; gap: 6px 12px; flex-wrap: wrap; }
     .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 18px 0 4px; }
-    .chips span { font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px; background: rgba(47, 95, 234, .09); color: var(--brand); }
+    .chips span { font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 10%, transparent); color: var(--brand); }
     body.malam .chips span { background: rgba(134, 164, 255, .12); color: #9db4ff; }
+    body.malam .card.ituang .chips span { background: rgba(240, 180, 138, .12); color: #F0B48A; }
 
     details { margin-top: 16px; text-align: left; border-top: 1px solid var(--line); padding-top: 12px; }
     summary { cursor: pointer; list-style: none; font-weight: 700; font-size: 14px; color: var(--ink); display: flex; justify-content: space-between; align-items: center; }
@@ -140,6 +143,10 @@
       text-align: center; font-size: 12px; color: rgba(255, 255, 255, .85); text-shadow: 0 1px 2px rgba(0, 0, 0, .25);
     }
 
+    @media (min-width: 900px) { main { grid-template-columns: repeat(2, minmax(0, 420px)); align-items: stretch; } }
+    .card.ituang { --brand: #D9824B; animation-delay: .12s; }
+    .card.ituang .logo { filter: drop-shadow(0 10px 18px rgba(217, 130, 75, .35)); }
+    body.malam .card.ituang h1 b { color: #F0B48A; }
     @media (max-height: 640px) { main { padding-bottom: 18vh; } .chips { display: none; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
   </style>
@@ -257,9 +264,36 @@
         <div class="hash">SHA-256 sertifikat: 55:94:85:41:17:BA:CA:6E:56:D5:FA:D5:44:BB:85:C1:A8:A1:AA:4C:BC:32:77:6F:B4:A1:49:35:26:56:AC:47</div>
       </details>
     </div>
+
+    <div class="card ituang">
+      <svg class="logo" viewBox="0 0 108 108" aria-label="Logo Ituang"><rect width="108" height="108" rx="25" fill="#D9824B"/><circle cx="54" cy="33" r="11" fill="#FBF8F4"/><circle cx="54" cy="33" r="6.5" fill="none" stroke="#D9824B" stroke-width="2"/><path d="M46 50 H62 V78 A8 8 0 0 1 46 78 Z" fill="#FBF8F4"/></svg>
+      <h1><b>i</b>tuang</h1>
+      <p class="tag">Catat uang masuk &amp; keluar, atur anggaran per kategori, dan menabung untuk impianmu.</p>
+
+      <a class="btn" href="download/Ituang.apk" download>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
+        Unduh untuk Android
+      </a>
+      <div class="meta"><span>Versi 1.0.0</span><span>·</span><span>±71 MB</span><span>·</span><span>Android 7.0+</span><span>·</span><span>Gratis</span></div>
+
+      <div class="chips">
+        <span>100% offline</span><span>Budgeting</span><span>Celengan &amp; Impian</span><span>Rekap PDF</span><span>Backup JSON</span>
+      </div>
+
+      <details>
+        <summary>Cara memasang</summary>
+        <ol>
+          <li>Ketuk <b>Unduh untuk Android</b> dari HP.</li>
+          <li>Buka <b>Ituang.apk</b> dari notifikasi atau File Manager.</li>
+          <li>Izinkan <b>Instal aplikasi tidak dikenal</b> bila diminta.</li>
+          <li>Jika Play Protect bertanya, pilih <b>Pindai aplikasi</b> lalu <b>Instal</b>.</li>
+        </ol>
+        <div class="hash">SHA-256 sertifikat: 20:A4:18:16:5D:D8:A3:03:FB:CD:1D:37:1E:DD:D7:6C:6D:8B:03:49:0E:20:FB:8F:71:61:4A:E5:04:51:56:D4<br>Semua data tersimpan hanya di HP — aplikasi tidak meminta izin internet. <a href="privacy-ituang" style="color:inherit">Privasi Ituang</a></div>
+      </details>
+    </div>
   </main>
 
-  <footer>© <span id="y">2026</span> Lapor Yuk · aplikasi pribadi, bukan aplikasi resmi instansi · <a href="privacy" style="color:inherit">Privasi</a></footer>
+  <footer>© <span id="y">2026</span> Lapor Yuk &amp; Ituang · aplikasi pribadi, bukan aplikasi resmi instansi · <a href="privacy" style="color:inherit">Privasi Lapor Yuk</a> · <a href="privacy-ituang" style="color:inherit">Privasi Ituang</a></footer>
 
   <script>
     // Same four moods as the app: pagi, siang, sore, malam (visitor's clock).
