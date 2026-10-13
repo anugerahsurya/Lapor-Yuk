@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/theme.dart';
 import '../../core/dates.dart';
@@ -44,6 +45,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
   Future<void> _checkAccess() async {
     final v = await ref.read(repoProvider).storage.hasPublicAccess();
     if (mounted) setState(() => _access = v);
+  }
+
+  Future<void> _requestNotif() async {
+    final status = await Permission.notification.request();
+    if (!mounted) return;
+    if (status.isGranted) {
+      toast(context, 'Izin notifikasi aktif');
+    } else {
+      toast(
+        context,
+        'Izin notifikasi masih mati. Nyalakan lewat Pengaturan aplikasi.',
+        icon: Icons.notifications_off_rounded,
+      );
+    }
   }
 
   Future<void> _editProfile() async {
@@ -169,47 +184,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
           const SizedBox(height: 10),
           AppCard(
             padding: const EdgeInsets.all(6),
-            child: Row(
+            child: Column(
               children: [
-                for (final (sch, label) in [(AccentScheme.royal, 'Royal Blue'), (AccentScheme.navy, 'Navy')])
-                  Expanded(
-                    child: Pressable(
-                      onTap: () => ref.read(settingsProvider.notifier).setScheme(sch),
-                      child: AnimatedContainer(
-                        duration: Motion.base,
-                        curve: Motion.ease,
-                        height: 56,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: s.scheme == sch ? c.primarySoft : Colors.transparent,
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: s.scheme == sch ? c.primary : Colors.transparent, width: 1.5),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 26,
-                              height: 26,
+                for (final row in const [
+                  [(AccentScheme.royal, 'Royal'), (AccentScheme.navy, 'Navy')],
+                  [(AccentScheme.pink, 'Pink'), (AccentScheme.orange, 'Oranye')],
+                ])
+                  Row(
+                    children: [
+                      for (final (sch, label) in row)
+                        Expanded(
+                          child: Pressable(
+                            onTap: () => ref.read(settingsProvider.notifier).setScheme(sch),
+                            child: AnimatedContainer(
+                              duration: Motion.base,
+                              curve: Motion.ease,
+                              height: 56,
+                              margin: const EdgeInsets.all(2),
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
                               decoration: BoxDecoration(
-                                color: AppColors.brandOf(sch),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                                boxShadow: [
-                                  BoxShadow(color: AppColors.brandOf(sch).withValues(alpha: .35), blurRadius: 8),
+                                color: s.scheme == sch ? c.primarySoft : Colors.transparent,
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(color: s.scheme == sch ? c.primary : Colors.transparent, width: 1.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 26,
+                                    height: 26,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.brandOf(sch),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 2),
+                                      boxShadow: [
+                                        BoxShadow(color: AppColors.brandOf(sch).withValues(alpha: .35), blurRadius: 8),
+                                      ],
+                                    ),
+                                    child: AnimatedOpacity(
+                                      duration: Motion.fast,
+                                      opacity: s.scheme == sch ? 1 : 0,
+                                      child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(label, style: context.t.labelLarge),
                                 ],
                               ),
-                              child: AnimatedOpacity(
-                                duration: Motion.fast,
-                                opacity: s.scheme == sch ? 1 : 0,
-                                child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
-                              ),
                             ),
-                            const SizedBox(width: 10),
-                            Text(label, style: context.t.labelLarge),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
+                    ],
                   ),
               ],
             ),
@@ -380,12 +404,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
             ),
           ),
           const SizedBox(height: 24),
+          const SectionLabel('Izin aplikasi'),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Perbarui izin notifikasi, kamera, lokasi, dan lainnya di halaman pengaturan sistem.',
+                  style: context.t.bodySmall,
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        label: 'Izin notifikasi',
+                        icon: Icons.notifications_active_rounded,
+                        style: BtnStyle.tonal,
+                        onTap: _requestNotif,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AppButton(
+                        label: 'Pengaturan aplikasi',
+                        icon: Icons.settings_rounded,
+                        style: BtnStyle.ghost,
+                        onTap: openAppSettings,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
           Center(
             child: Column(
               children: [
                 const LogoTile(size: 40),
                 const SizedBox(height: 8),
-                Text('Lapor Yuk · v1.0', style: context.t.labelLarge),
+                Text('Lapor Yuk · v1.2', style: context.t.labelLarge),
                 Text('Bekerja penuh tanpa internet', style: context.t.bodySmall),
               ],
             ),

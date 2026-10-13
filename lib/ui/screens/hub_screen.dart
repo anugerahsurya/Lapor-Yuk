@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/dates.dart';
 import '../../core/quotes.dart';
 import '../../core/theme.dart';
+
+import 'package:url_launcher/url_launcher.dart';
+
 import '../../services/chat_service.dart';
 import '../../state/providers.dart';
 import '../sheets/todo_sheet.dart';
@@ -53,6 +56,7 @@ class HubScreen extends ConsumerWidget {
             sliver: SliverList.list(
               children: [
                 enter(const _QuoteCard()),
+                const _UpdateBanner(),
                 const SizedBox(height: 22),
                 enter(const SectionLabel('Fitur')),
                 enter(
@@ -403,6 +407,82 @@ class _CkpToday extends StatelessWidget {
           ),
           if (count == 0 && !weekend) AppButton(label: 'Lapor', style: BtnStyle.tonal, onTap: onReport),
         ],
+      ),
+    );
+  }
+}
+
+/// Shows on Beranda when a newer APK is on the download page. Dismissible per
+/// version so it does not nag after the user has seen it.
+class _UpdateBanner extends ConsumerStatefulWidget {
+  const _UpdateBanner();
+
+  @override
+  ConsumerState<_UpdateBanner> createState() => _UpdateBannerState();
+}
+
+class _UpdateBannerState extends ConsumerState<_UpdateBanner> {
+  int? _dismissed;
+
+  @override
+  Widget build(BuildContext context) {
+    final up = ref.watch(updateProvider).value;
+    if (up == null || up.versionCode == _dismissed) return const SizedBox.shrink();
+    final c = context.c;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: AppCard(
+        color: c.brand,
+        child: Row(
+          children: [
+            Icon(Icons.system_update_rounded, color: c.onBrand),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pembaruan tersedia · ${up.versionName}',
+                    style: context.t.titleSmall!.copyWith(color: c.onBrand),
+                  ),
+                  if (up.notes.isNotEmpty)
+                    Text(
+                      up.notes,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.t.bodySmall!.copyWith(color: Colors.white.withValues(alpha: .8)),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Pressable(
+                  onTap: up.url.isEmpty
+                      ? null
+                      : () => launchUrl(Uri.parse(up.url), mode: LaunchMode.externalApplication),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                    child: Text('Unduh', style: context.t.labelLarge!.copyWith(color: c.brand)),
+                  ),
+                ),
+                Pressable(
+                  onTap: () => setState(() => _dismissed = up.versionCode),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Nanti',
+                      style: context.t.labelMedium!.copyWith(color: Colors.white.withValues(alpha: .8)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

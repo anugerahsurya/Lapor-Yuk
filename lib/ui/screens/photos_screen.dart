@@ -12,13 +12,17 @@ import '../../state/providers.dart';
 import '../widgets/activity_card.dart';
 import '../widgets/common.dart';
 import 'camera_screen.dart';
+import 'detail_screen.dart';
 import 'form_screen.dart';
 
-/// Quick-camera photos waiting to be attached to a report.
+/// Gallery of every photo in the app: quick-camera photos plus image evidence
+/// from each activity, grouped by capture date.
 class PhotosScreen extends ConsumerWidget {
   const PhotosScreen({super.key});
 
-  Future<void> _actions(BuildContext context, WidgetRef ref, Evidence e) async {
+  Future<void> _actions(BuildContext context, WidgetRef ref, GalleryPhoto g) async {
+    final e = g.evidence;
+    final a = g.activity;
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -42,22 +46,38 @@ class PhotosScreen extends ConsumerWidget {
                       children: [
                         Text('${fmtFullDate(e.capturedAt)} · ${fmtTime(e.capturedAt)}', style: ctx.t.titleSmall),
                         const SizedBox(height: 2),
-                        Text(e.address ?? 'Alamat menunggu sinyal', maxLines: 2, style: ctx.t.bodySmall),
+                        Text(
+                          a != null ? a.title : (e.address ?? 'Alamat menunggu sinyal'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: ctx.t.bodySmall,
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 18),
-              AppButton(
-                label: 'Buat laporan dengan foto ini',
-                icon: Icons.post_add_rounded,
-                expand: true,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.of(context).push(softRoute(FormScreen(initialDay: e.capturedAt, initialEvidences: [e])));
-                },
-              ),
+              if (a == null)
+                AppButton(
+                  label: 'Buat laporan dengan foto ini',
+                  icon: Icons.post_add_rounded,
+                  expand: true,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context).push(softRoute(FormScreen(initialDay: e.capturedAt, initialEvidences: [e])));
+                  },
+                )
+              else
+                AppButton(
+                  label: 'Buka kegiatan',
+                  icon: Icons.assignment_outlined,
+                  expand: true,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context).push(softRoute(DetailScreen(id: a.id!)));
+                  },
+                ),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -75,23 +95,36 @@ class PhotosScreen extends ConsumerWidget {
                       label: 'Hapus',
                       icon: Icons.delete_outline_rounded,
                       style: BtnStyle.danger,
-                      onTap: () async {
-                        final ok = await confirmSheet(
-                          ctx,
-                          title: 'Hapus foto?',
-                          message: 'Foto juga dihapus dari folder Lapor Yuk.',
-                          confirm: 'Hapus',
-                          danger: true,
-                        );
-                        if (!ok) return;
-                        await ref.read(repoProvider).deleteEvidence(e);
-                        ref.invalidate(looseProvider);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      },
+                      // A photo attached to an activity is removed from the
+                      // report form, not here, to keep the achievement intact.
+                      onTap: a != null
+                          ? null
+                          : () async {
+                              final ok = await confirmSheet(
+                                ctx,
+                                title: 'Hapus foto?',
+                                message: 'Foto juga dihapus dari folder Lapor Yuk.',
+                                confirm: 'Hapus',
+                                danger: true,
+                              );
+                              if (!ok) return;
+                              await ref.read(repoProvider).deleteEvidence(e);
+                              ref.invalidate(looseProvider);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            },
                     ),
                   ),
                 ],
               ),
+              if (a != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Foto ini melekat pada kegiatan. Hapus dari halaman kegiatan bila perlu.',
+                    style: ctx.t.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
             ],
           ),
         ),
@@ -101,10 +134,11 @@ class PhotosScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final photos = ref.watch(looseProvider).value ?? const <Evidence>[];
-    final groups = <DateTime, List<Evidence>>{};
-    for (final e in photos) {
-      groups.putIfAbsent(dateOnly(e.capturedAt), () => []).add(e);
+    final photos = ref.watch(galleryProvider).value ?? const <GalleryPhoto>[];
+    final loose = photos.where((g) => g.activity == null).length;
+    final groups = <DateTime, List<GalleryPhoto>>{};
+    for (final g in photos) {
+      groups.putIfAbsent(dateOnly(g.evidence.capturedAt), () => []).add(g);
     }
     return Scaffold(
       appBar: AppBar(
@@ -132,13 +166,21 @@ class PhotosScreen extends ConsumerWidget {
               child: EmptyState(
                 icon: Icons.photo_camera_back_outlined,
                 title: 'Belum ada foto',
-                message: 'Foto dari Kamera cepat muncul di sini sampai dilampirkan ke laporan.',
+                message: 'Foto dari Kamera cepat dan bukti gambar kegiatan muncul di sini.',
               ),
             )
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
               physics: const BouncingScrollPhysics(),
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '${photos.length} foto'
+                    '${loose > 0 ? ' · $loose belum dilampirkan' : ''}',
+                    style: context.t.bodySmall,
+                  ),
+                ),
                 for (final entry in groups.entries) ...[
                   SectionLabel('${fmtDay(entry.key)}, ${fmtDateShort(entry.key)}'),
                   GridView.count(
@@ -149,16 +191,37 @@ class PhotosScreen extends ConsumerWidget {
                     crossAxisSpacing: 8,
                     childAspectRatio: 3 / 4,
                     children: [
-                      for (final (i, e) in entry.value.indexed)
+                      for (final (i, g) in entry.value.indexed)
                         Pressable(
-                          onTap: () => _actions(context, ref, e),
+                          onTap: () => _actions(context, ref, g),
                           scale: .95,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(14),
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
-                                Image.file(File(e.masterPath), fit: BoxFit.cover, cacheWidth: 300),
+                                Image.file(File(g.evidence.masterPath), fit: BoxFit.cover, cacheWidth: 300),
+                                if (g.activity == null)
+                                  Positioned(
+                                    right: 6,
+                                    top: 6,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: context.c.accent,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'Baru',
+                                        style: TextStyle(
+                                          fontFamily: kFont,
+                                          color: Color(0xFF111A33),
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 Positioned(
                                   left: 6,
                                   bottom: 6,
@@ -169,7 +232,7 @@ class PhotosScreen extends ConsumerWidget {
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
-                                      fmtTime(e.capturedAt),
+                                      fmtTime(g.evidence.capturedAt),
                                       style: const TextStyle(
                                         fontFamily: kFont,
                                         color: Colors.white,

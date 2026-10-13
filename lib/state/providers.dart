@@ -15,6 +15,7 @@ import '../data/todo.dart';
 import '../services/chat_service.dart';
 import '../services/drive_sync.dart';
 import '../services/google_account.dart';
+import '../services/update_service.dart';
 import '../services/location_service.dart';
 import '../services/watermark.dart';
 
@@ -210,6 +211,28 @@ final todayTodosProvider = Provider<List<Todo>>((ref) {
 final looseProvider = FutureProvider<List<Evidence>>((ref) {
   ref.watch(activitiesProvider);
   return ref.read(repoProvider).loose();
+});
+
+class GalleryPhoto {
+  const GalleryPhoto(this.evidence, this.activity);
+  final Evidence evidence;
+
+  /// null for a quick-camera photo not yet attached to a report.
+  final Activity? activity;
+}
+
+/// Every photo in the app: quick-camera photos plus image evidence from all
+/// activities, newest first. PDFs are left out.
+final galleryProvider = FutureProvider<List<GalleryPhoto>>((ref) async {
+  final acts = ref.watch(activitiesProvider).value ?? const <Activity>[];
+  final loose = await ref.watch(looseProvider.future);
+  final out = [
+    for (final a in acts)
+      for (final e in a.evidences)
+        if (e.isImage) GalleryPhoto(e, a),
+    for (final e in loose) GalleryPhoto(e, null),
+  ]..sort((x, y) => y.evidence.capturedAt.compareTo(x.evidence.capturedAt));
+  return out;
 });
 
 List<Activity> _sorted(Iterable<Activity> xs) =>
@@ -456,3 +479,7 @@ class DriveSyncNotifier extends Notifier<DriveSyncState> {
 }
 
 final driveSyncProvider = NotifierProvider<DriveSyncNotifier, DriveSyncState>(DriveSyncNotifier.new);
+
+/// Latest available app update (null when up to date or offline). Checked once
+/// when home loads; refresh on pull-to-refresh by invalidating.
+final updateProvider = FutureProvider<AppUpdate?>((ref) => UpdateService.check());

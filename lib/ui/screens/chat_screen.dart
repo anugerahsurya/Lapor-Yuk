@@ -1345,8 +1345,46 @@ class GroupInfoScreen extends StatefulWidget {
 class _GroupInfoScreenState extends State<GroupInfoScreen> {
   late final _members = ChatService.members(widget.group.id);
   final _people = ChatService.people();
+  late String _name = widget.group.name;
 
   bool get _owner => widget.group.owner == ChatService.uid;
+
+  Future<void> _rename() async {
+    final ctrl = TextEditingController(text: _name);
+    final name = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(ctx).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Ubah nama grup', style: ctx.t.titleMedium),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              maxLength: 60,
+              textCapitalization: TextCapitalization.words,
+              onSubmitted: (v) => Navigator.pop(ctx, v),
+            ),
+            const SizedBox(height: 8),
+            AppButton(label: 'Simpan', expand: true, onTap: () => Navigator.pop(ctx, ctrl.text)),
+          ],
+        ),
+      ),
+    );
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed == _name) return;
+    try {
+      await ChatService.renameGroup(widget.group.id, trimmed);
+      if (mounted) setState(() => _name = trimmed);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal mengubah nama: $e', icon: Icons.error_outline_rounded);
+    }
+  }
 
   Future<void> _invite(List<ChatProfile> candidates) async {
     final picked = <String>{};
@@ -1449,8 +1487,15 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           ),
         ),
         leadingWidth: 60,
-        title: Text(widget.group.name, style: context.t.titleLarge, overflow: TextOverflow.ellipsis),
+        title: Text(_name, style: context.t.titleLarge, overflow: TextOverflow.ellipsis),
         centerTitle: true,
+        actions: [
+          if (_owner)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: IconBtn(icon: Icons.edit_rounded, tooltip: 'Ubah nama grup', onTap: _rename),
+            ),
+        ],
       ),
       body: StreamBuilder<List<ChatProfile>>(
         stream: _people,

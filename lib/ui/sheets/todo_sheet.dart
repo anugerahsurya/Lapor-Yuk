@@ -1,3 +1,4 @@
+import 'package:add_2_calendar/add_2_calendar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -71,6 +72,25 @@ class _TodoSheetState extends ConsumerState<_TodoSheet> {
     );
     await ref.read(todosProvider.notifier).save(t);
     if (mounted) Navigator.pop(context);
+  }
+
+  /// Opens the device calendar's "new event" screen, prefilled. Without a time
+  /// it is an all-day event; with a time it lasts one hour.
+  Future<void> _addToCalendar() async {
+    final day = _due!;
+    final allDay = _minutes == null;
+    final start = allDay
+        ? DateTime(day.year, day.month, day.day)
+        : DateTime(day.year, day.month, day.day, _minutes! ~/ 60, _minutes! % 60);
+    await Add2Calendar.addEvent2Cal(
+      Event(
+        title: _title.text.trim().isEmpty ? 'Tugas' : _title.text.trim(),
+        description: _note.text.trim(),
+        startDate: start,
+        endDate: allDay ? start : start.add(const Duration(hours: 1)),
+        allDay: allDay,
+      ),
+    );
   }
 
   @override
@@ -242,6 +262,10 @@ class _TodoSheetState extends ConsumerState<_TodoSheet> {
                       if (context.mounted) Navigator.pop(context);
                     },
                   ),
+                  const SizedBox(width: 12),
+                ],
+                if (_due != null) ...[
+                  IconBtn(icon: Icons.event_available_rounded, tooltip: 'Tambah ke kalender', onTap: _addToCalendar),
                   const SizedBox(width: 12),
                 ],
                 Expanded(

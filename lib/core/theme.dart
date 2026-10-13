@@ -5,10 +5,12 @@ const kFont = 'PlusJakartaSans';
 
 /// Brand colour families. One dominant colour + white; amber is a small
 /// accent only (sun, primary action), like a single highlight.
-enum AccentScheme { royal, navy }
+enum AccentScheme { royal, navy, pink, orange }
 
 const _royal = Color(0xFF2F5FEA);
 const _navy = Color(0xFF1F3170);
+const _pink = Color(0xFFE24C86);
+const _orange = Color(0xFFEC6A2C);
 
 /// Design tokens.
 ///  * [brand]   strong fill (buttons, nav, selected states) with [onBrand] text
@@ -49,7 +51,12 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color navBg;
   final Color navInk;
 
-  static Color brandOf(AccentScheme s) => s == AccentScheme.royal ? _royal : _navy;
+  static Color brandOf(AccentScheme s) => switch (s) {
+    AccentScheme.royal => _royal,
+    AccentScheme.navy => _navy,
+    AccentScheme.pink => _pink,
+    AccentScheme.orange => _orange,
+  };
 
   factory AppColors.of(Brightness b, AccentScheme scheme) {
     final brand = brandOf(scheme);
@@ -72,8 +79,12 @@ class AppColors extends ThemeExtension<AppColors> {
         navInk: Colors.white,
       );
     }
-    final tint = scheme == AccentScheme.royal ? const Color(0xFF86A4FF) : const Color(0xFF9DB0EC);
-    final fill = scheme == AccentScheme.royal ? _royal : const Color(0xFF2E4592);
+    final (fill, tint) = switch (scheme) {
+      AccentScheme.royal => (_royal, const Color(0xFF86A4FF)),
+      AccentScheme.navy => (const Color(0xFF2E4592), const Color(0xFF9DB0EC)),
+      AccentScheme.pink => (const Color(0xFFC13B6E), const Color(0xFFF59CBE)),
+      AccentScheme.orange => (const Color(0xFFCB5A20), const Color(0xFFF6B183)),
+    };
     const surface = Color(0xFF121A2C);
     return AppColors(
       bg: const Color(0xFF0A0F1C),

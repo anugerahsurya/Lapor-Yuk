@@ -373,6 +373,9 @@ abstract final class ChatService {
   static Future<void> removeMember(String groupId, [String? user]) =>
       _db.from('group_members').delete().eq('group_id', groupId).eq('user_id', user ?? uid!);
 
+  static Future<void> renameGroup(String groupId, String name) =>
+      _db.from('groups').update({'name': name.trim()}).eq('id', groupId);
+
   static Future<void> deleteGroup(String groupId) => _db.from('groups').delete().eq('id', groupId);
 
   static Stream<List<Story>> stories() =>
