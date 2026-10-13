@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -47,6 +48,9 @@ class ChatMessage {
     required this.at,
     this.replyTo,
     this.storyPath,
+    this.photoId,
+    this.voicePath,
+    this.voiceSecs,
   });
   final int id;
   final String room, sender, body;
@@ -56,6 +60,13 @@ class ChatMessage {
   /// Set when this message replies to a story.
   final String? storyPath;
 
+  /// View-limited photo attached to this message; null once it is used up.
+  final int? photoId;
+
+  /// Voice note; [voicePath] goes null after 3 days ("VN kedaluwarsa").
+  final String? voicePath;
+  final int? voiceSecs;
+
   factory ChatMessage.fromRow(Map<String, dynamic> r) => ChatMessage(
     id: r['id'] as int,
     room: r['room'] as String,
@@ -64,6 +75,9 @@ class ChatMessage {
     at: DateTime.parse(r['created_at'] as String).toLocal(),
     replyTo: r['reply_to'] as int?,
     storyPath: r['story_path'] as String?,
+    photoId: r['photo_id'] as int?,
+    voicePath: r['voice_path'] as String?,
+    voiceSecs: (r['voice_secs'] as num?)?.toInt(),
   );
 }
 
@@ -275,6 +289,89 @@ abstract final class ChatService {
   }
 
   static Future<void> deleteMessage(int id) => _db.from('chat').delete().eq('id', id);
+
+  static const photoBucket = 'chat_media';
+  static const voiceBucket = 'chat_voice';
+
+  /// Sends a view-limited photo. [jpeg] must already be compressed.
+  /// [maxViews] = 2 for a DM, 2 x member count for a group.
+  static Future<void> sendPhoto(String room, Uint8List jpeg, {required int maxViews, String? caption}) async {
+    final path = '${uid!}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await _db.storage
+        .from(photoBucket)
+        .uploadBinary(path, jpeg, fileOptions: const FileOptions(contentType: 'image/jpeg'));
+    final row = await _db
+        .from('chat_photos')
+        .insert({'room': room, 'path': path, 'max_views': maxViews})
+        .select()
+        .single();
+    final text = caption?.trim() ?? '';
+    await _db.from('chat').insert({'room': room, 'body': text.isEmpty ? 'Foto' : text, 'photo_id': row['id']});
+  }
+
+  /// Opens a view-limited photo once. Returns its bytes if still allowed, or
+  /// null when the viewer has no views left or the photo is gone. Deletes the
+  /// Storage file when the last allowed view is used.
+  static Future<Uint8List?> viewPhoto(int photoId, String path) async {
+    final res = (await _db.rpc('view_photo', params: {'pid': photoId}) as List).cast<Map<String, dynamic>>();
+    if (res.isEmpty || res.first['allowed'] != true) return null;
+    Uint8List? bytes;
+    try {
+      bytes = await _db.storage.from(photoBucket).download(path);
+    } catch (_) {}
+    if (res.first['deleted'] == true) {
+      final gone = res.first['gone_path'] as String? ?? path;
+      try {
+        await _db.storage.from(photoBucket).remove([gone]);
+      } catch (_) {}
+    }
+    return bytes;
+  }
+
+  /// How many views the current user has left on [photoId] (0 when exhausted).
+  static Future<int> photoLeft(int photoId) async {
+    try {
+      return (await _db.rpc('photo_left', params: {'pid': photoId}) as num).toInt();
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// The Storage path of a still-live photo (null once used up).
+  static Future<String?> photoPath(int photoId) async {
+    final r = await _db.from('chat_photos').select('path').eq('id', photoId).maybeSingle();
+    return r?['path'] as String?;
+  }
+
+  static Future<void> sendVoice(String room, String filePath, int seconds, {int? replyTo}) async {
+    final bytes = await File(filePath).readAsBytes();
+    final path = '${uid!}/${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _db.storage
+        .from(voiceBucket)
+        .uploadBinary(path, bytes, fileOptions: const FileOptions(contentType: 'audio/mp4'));
+    await _db.from('chat').insert({
+      'room': room,
+      'body': 'Pesan suara',
+      'voice_path': path,
+      'voice_secs': seconds,
+      'reply_to': ?replyTo,
+    });
+  }
+
+  static String voiceUrl(String path) => _db.storage.from(voiceBucket).getPublicUrl(path);
+
+  /// Removes expired ephemeral photos (>2 days) and voice notes (>3 days).
+  static Future<void> purgeChatMedia() async {
+    if (!signedIn) return;
+    try {
+      final photos = (await _db.rpc('purge_chat_photos') as List).cast<String>();
+      if (photos.isNotEmpty) await _db.storage.from(photoBucket).remove(photos);
+    } catch (_) {}
+    try {
+      final voices = (await _db.rpc('purge_voice') as List).cast<String>();
+      if (voices.isNotEmpty) await _db.storage.from(voiceBucket).remove(voices);
+    } catch (_) {}
+  }
 
   /// message id -> {user id: emoji}
   static Stream<Map<int, Map<String, String>>> reactions(String room) =>

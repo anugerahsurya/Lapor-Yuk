@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../core/dates.dart';
 import '../../core/env.dart';
@@ -39,6 +44,7 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
       _me = ChatService.me();
       ChatService.refreshBadges();
       ChatService.purgeStories();
+      ChatService.purgeChatMedia();
     }
   }
 
@@ -405,9 +411,19 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   Set<String> _joined = const {};
   ChatMessage? _replying;
   bool _sending = false;
+  bool _hasText = false;
+
+  final _rec = AudioRecorder();
+  bool _recording = false;
+  int _recSecs = 0;
+  Timer? _recTimer;
 
   bool get _multi => widget.room == ChatService.publicRoom || widget.group != null;
   bool get _receipts => widget.room != ChatService.publicRoom;
+  bool get _canPhoto => widget.room != ChatService.publicRoom;
+
+  /// DM: the one recipient x2. Group: 2 x members. (Ruang Umum has no photos.)
+  int get _photoBudget => widget.group != null ? 2 * (_joined.isEmpty ? 1 : _joined.length) : 2;
 
   @override
   void initState() {
@@ -434,6 +450,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           ),
         ),
     ]);
+    _input.addListener(() {
+      final has = _input.text.trim().isNotEmpty;
+      if (has != _hasText) setState(() => _hasText = has);
+    });
   }
 
   @override
@@ -441,6 +461,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     for (final s in _subs) {
       s.cancel();
     }
+    _recTimer?.cancel();
+    _rec.dispose();
     _input.dispose();
     ChatService.markRead(widget.room);
     super.dispose();
@@ -475,6 +497,87 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<void> _attachPhoto() async {
+    final src = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: Text(
+                'Foto sekilas: bisa dilihat 2x tiap orang, lalu terhapus.',
+                style: ctx.t.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Ambil foto'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Dari galeri'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (src == null) return;
+    final picked = await ImagePicker().pickImage(source: src, imageQuality: 100);
+    if (picked == null || !mounted) return;
+    try {
+      final jpeg = await compressStory(picked.path);
+      await ChatService.sendPhoto(widget.room, jpeg, maxViews: _photoBudget);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal mengirim foto: $e', icon: Icons.error_outline_rounded);
+    }
+  }
+
+  Future<void> _startRecord() async {
+    if (!await _rec.hasPermission()) {
+      if (mounted) toast(context, 'Izin mikrofon ditolak', icon: Icons.mic_off_rounded);
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _rec.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+    if (!mounted) return;
+    setState(() {
+      _recording = true;
+      _recSecs = 0;
+    });
+    _recTimer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() => _recSecs++));
+  }
+
+  Future<void> _stopRecord({required bool send}) async {
+    _recTimer?.cancel();
+    final path = await _rec.stop();
+    final secs = _recSecs;
+    if (mounted) setState(() => _recording = false);
+    if (!send || path == null || secs < 1) {
+      if (path != null) {
+        try {
+          await File(path).delete();
+        } catch (_) {}
+      }
+      return;
+    }
+    try {
+      await ChatService.sendVoice(widget.room, path, secs, replyTo: _replying?.id);
+      if (mounted) setState(() => _replying = null);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal mengirim VN: $e', icon: Icons.error_outline_rounded);
+    }
+    try {
+      await File(path).delete();
+    } catch (_) {}
   }
 
   Future<void> _react(ChatMessage m, String emoji) async {
@@ -738,36 +841,72 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _input,
-                      minLines: 1,
-                      maxLines: 5,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(hintText: 'Tulis pesan…'),
-                      onSubmitted: (_) => _send(),
+              child: _recording
+                  ? Row(
+                      children: [
+                        IconBtn(
+                          icon: Icons.delete_outline_rounded,
+                          color: c.danger,
+                          onTap: () => _stopRecord(send: false),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(color: c.danger, shape: BoxShape.circle),
+                        ).animate(onPlay: (ctl) => ctl.repeat(reverse: true)).fadeIn(duration: 600.ms),
+                        const SizedBox(width: 10),
+                        Text('Merekam… ${_fmtSecs(_recSecs)}', style: context.t.titleSmall),
+                        const Spacer(),
+                        Pressable(
+                          onTap: () => _stopRecord(send: true),
+                          scale: .85,
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(color: c.brand, shape: BoxShape.circle),
+                            child: Icon(Icons.send_rounded, color: c.onBrand, size: 21),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        if (_canPhoto)
+                          IconBtn(
+                            icon: Icons.add_photo_alternate_rounded,
+                            tooltip: 'Foto sekilas',
+                            onTap: _attachPhoto,
+                          ),
+                        if (_canPhoto) const SizedBox(width: 6),
+                        Expanded(
+                          child: TextField(
+                            controller: _input,
+                            minLines: 1,
+                            maxLines: 5,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: const InputDecoration(hintText: 'Tulis pesan…'),
+                            onSubmitted: (_) => _send(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Pressable(
+                          onTap: _sending ? null : (_hasText ? _send : _startRecord),
+                          scale: .85,
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(color: c.brand, shape: BoxShape.circle),
+                            child: _sending
+                                ? Padding(
+                                    padding: const EdgeInsets.all(15),
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: c.onBrand),
+                                  )
+                                : Icon(_hasText ? Icons.send_rounded : Icons.mic_rounded, color: c.onBrand, size: 21),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Pressable(
-                    onTap: _sending ? null : _send,
-                    scale: .85,
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(color: c.brand, shape: BoxShape.circle),
-                      child: _sending
-                          ? Padding(
-                              padding: const EdgeInsets.all(15),
-                              child: CircularProgressIndicator(strokeWidth: 2, color: c.onBrand),
-                            )
-                          : Icon(Icons.send_rounded, color: c.onBrand, size: 21),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],
@@ -880,7 +1019,21 @@ class _Bubble extends StatelessWidget {
                   ],
                 ),
               ),
-            Text(message.body, style: context.t.bodyMedium!.copyWith(color: fg)),
+            if (message.voicePath != null)
+              _VoiceBubble(url: ChatService.voiceUrl(message.voicePath!), secs: message.voiceSecs ?? 0, mine: mine)
+            else if (message.body == 'Pesan suara' && message.voicePath == null)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.mic_off_rounded, size: 16, color: soft),
+                  const SizedBox(width: 6),
+                  Text('VN kedaluwarsa', style: context.t.bodyMedium!.copyWith(color: soft)),
+                ],
+              )
+            else if (message.photoId != null)
+              _PhotoBubble(photoId: message.photoId!, mine: mine, caption: message.body)
+            else
+              Text(message.body, style: context.t.bodyMedium!.copyWith(color: fg)),
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.bottomRight,
@@ -1562,6 +1715,221 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+String _fmtSecs(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+
+/// View-limited photo. Recipients tap to open (one view); the sender sees a
+/// plain marker. The image is shown from memory, then deleted server-side once
+/// its view budget runs out.
+class _PhotoBubble extends StatefulWidget {
+  const _PhotoBubble({required this.photoId, required this.mine, required this.caption});
+  final int photoId;
+  final bool mine;
+  final String caption;
+
+  @override
+  State<_PhotoBubble> createState() => _PhotoBubbleState();
+}
+
+class _PhotoBubbleState extends State<_PhotoBubble> {
+  int? _left;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.mine) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final n = await ChatService.photoLeft(widget.photoId);
+    if (mounted) setState(() => _left = n);
+  }
+
+  Future<void> _open() async {
+    if (_busy || widget.mine || (_left ?? 0) <= 0) return;
+    setState(() => _busy = true);
+    try {
+      final path = await ChatService.photoPath(widget.photoId);
+      if (path == null) {
+        if (mounted) toast(context, 'Foto sudah tidak tersedia');
+        return;
+      }
+      final bytes = await ChatService.viewPhoto(widget.photoId, path);
+      if (bytes == null) {
+        if (mounted) toast(context, 'Foto sudah tidak tersedia');
+        return;
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: GestureDetector(
+            onTap: () => Navigator.pop(ctx),
+            child: InteractiveViewer(child: Image.memory(bytes)),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal membuka: $e', icon: Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      _refresh();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final fg = widget.mine ? c.onBrand : c.ink;
+    final soft = widget.mine ? Colors.white.withValues(alpha: .75) : c.muted;
+    final left = _left ?? 0;
+    final gone = !widget.mine && left <= 0;
+    return Pressable(
+      onTap: _open,
+      child: Container(
+        width: 190,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: widget.mine ? Colors.white.withValues(alpha: .14) : c.surface2,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(gone ? Icons.visibility_off_rounded : Icons.photo_rounded, color: fg, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Foto sekilas', style: context.t.titleSmall!.copyWith(color: fg)),
+                ),
+                if (_busy) SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: fg)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.mine
+                  ? 'Terkirim. Tiap orang bisa lihat 2x.'
+                  : gone
+                  ? 'Tidak bisa dilihat lagi'
+                  : 'Ketuk untuk lihat · sisa $left',
+              style: context.t.bodySmall!.copyWith(color: soft),
+            ),
+            if (widget.caption.isNotEmpty && widget.caption != 'Foto')
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(widget.caption, style: context.t.bodyMedium!.copyWith(color: fg)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Voice note with a play/pause button and a progress line.
+class _VoiceBubble extends StatefulWidget {
+  const _VoiceBubble({required this.url, required this.secs, required this.mine});
+  final String url;
+  final int secs;
+  final bool mine;
+
+  @override
+  State<_VoiceBubble> createState() => _VoiceBubbleState();
+}
+
+class _VoiceBubbleState extends State<_VoiceBubble> {
+  final _player = AudioPlayer();
+  bool _playing = false;
+  Duration _pos = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onPlayerStateChanged.listen((s) {
+      if (mounted) setState(() => _playing = s == PlayerState.playing);
+    });
+    _player.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _pos = p);
+    });
+    _player.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _pos = Duration.zero);
+    });
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggle() async {
+    try {
+      if (_playing) {
+        await _player.pause();
+      } else {
+        await _player.play(UrlSource(widget.url));
+      }
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal memutar VN', icon: Icons.error_outline_rounded);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final fg = widget.mine ? c.onBrand : c.ink;
+    final soft = widget.mine ? Colors.white.withValues(alpha: .3) : c.line;
+    final total = widget.secs <= 0 ? 1.0 : widget.secs.toDouble();
+    final value = (_pos.inMilliseconds / 1000 / total).clamp(0.0, 1.0);
+    return SizedBox(
+      width: 180,
+      child: Row(
+        children: [
+          Pressable(
+            onTap: _toggle,
+            scale: .85,
+            child: Icon(
+              _playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+              color: fg,
+              size: 34,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _playing || _pos > Duration.zero ? value : 0,
+                    minHeight: 4,
+                    backgroundColor: soft,
+                    color: widget.mine ? Colors.white : c.primary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _fmtSecs(_playing || _pos > Duration.zero ? _pos.inSeconds : widget.secs),
+                  style: context.t.labelSmall!.copyWith(
+                    color: widget.mine ? Colors.white.withValues(alpha: .8) : c.muted,
+                    fontSize: 10.5,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -21,6 +21,13 @@ const avatars = [
   'pangolin',
   'toucan',
   'hamster',
+  'alpaca',
+  'seal',
+  'dachshund',
+  'koala',
+  'hedgehog',
+  'sparrow',
+  'bear',
 ];
 
 String avatarAsset(String name) => 'assets/avatars/$name.webp';
