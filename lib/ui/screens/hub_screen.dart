@@ -103,7 +103,11 @@ class HubScreen extends ConsumerWidget {
                       ),
                       _MiniFeature(icon: Icons.picture_as_pdf_rounded, label: 'Rekap', onTap: () => openKinerja(2)),
                       ListenableBuilder(
-                        listenable: Listenable.merge([ChatService.unread, ChatService.invites]),
+                        listenable: Listenable.merge([
+                          ChatService.unread,
+                          ChatService.invites,
+                          ChatService.friendRequests,
+                        ]),
                         builder: (context, _) => _MiniFeature(
                           icon: Icons.forum_rounded,
                           label: 'Chat',

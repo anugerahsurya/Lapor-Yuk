@@ -36,6 +36,16 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
   Stream<ChatProfile?>? _me;
 
   late final Stream<List<ChatGroup>>? _groups = ChatService.signedIn ? ChatService.groups() : null;
+  late final Stream<List<Connection>>? _connections = ChatService.signedIn ? ChatService.connections() : null;
+
+  Future<void> _respond(ChatProfile p, bool accept) async {
+    try {
+      await ChatService.respondConnect(p.id, accept);
+      if (mounted) toast(context, accept ? 'Berteman dengan ${p.name}' : 'Permintaan ditolak');
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal: $e', icon: Icons.error_outline_rounded);
+    }
+  }
 
   @override
   void initState() {
@@ -98,8 +108,14 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
         centerTitle: true,
         actions: [
           if (ready)
+            IconBtn(
+              icon: Icons.person_add_alt_1_rounded,
+              tooltip: 'Tambah teman',
+              onTap: () => Navigator.of(context).push(softRoute(const AddFriendScreen())),
+            ),
+          if (ready)
             Padding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(left: 8, right: 12),
               child: IconBtn(icon: Icons.sync_rounded, tooltip: 'Sync profil', onTap: _syncing ? null : _sync),
             ),
         ],
@@ -120,175 +136,202 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
                 ),
               ),
             )
-          : StreamBuilder<List<ChatProfile>>(
-              stream: ChatService.people(),
-              builder: (context, snap) {
-                final people = snap.data ?? const <ChatProfile>[];
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                  children: [
-                    _OnlineCard(me: _me, onChanged: _setOnline),
-                    const SizedBox(height: 16),
-                    _StoryStrip(people: people),
-                    const SizedBox(height: 16),
-                    AppCard(
-                      onTap: () =>
-                          Navigator.of(context)
+          : StreamBuilder<List<Connection>>(
+              stream: _connections,
+              builder: (context, cs) {
+                final conns = cs.data ?? const <Connection>[];
+                final friendIds = {for (final x in conns.where((e) => e.accepted)) x.other};
+                final incoming = conns.where((e) => e.incoming).toList();
+                return StreamBuilder<List<ChatProfile>>(
+                  stream: ChatService.people(),
+                  builder: (context, snap) {
+                    final people = snap.data ?? const <ChatProfile>[];
+                    final byId = {for (final p in people) p.id: p};
+                    final friends = [
+                      for (final id in friendIds)
+                        if (byId[id] != null) byId[id]!,
+                    ]..sort((a, b) => a.onlineNow == b.onlineNow ? a.name.compareTo(b.name) : (a.onlineNow ? -1 : 1));
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                      children: [
+                        _OnlineCard(me: _me, onChanged: _setOnline),
+                        const SizedBox(height: 16),
+                        _StoryStrip(people: people),
+                        const SizedBox(height: 16),
+                        AppCard(
+                          onTap: () => Navigator.of(context)
                               .push(softRoute(const ChatRoomScreen(room: ChatService.publicRoom, title: 'Ruang Umum'))),
-                      color: c.brand,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 46,
-                            height: 46,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: .16),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Icon(Icons.groups_rounded, color: c.onBrand),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Ruang Umum', style: context.t.titleMedium!.copyWith(color: c.onBrand)),
-                                Text(
-                                  'Ngobrol dengan semua pengguna Lapor Yuk',
-                                  style: context.t.bodySmall!.copyWith(color: Colors.white.withValues(alpha: .75)),
+                          color: c.brand,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 46,
+                                height: 46,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: .16),
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
-                              ],
-                            ),
-                          ),
-                          const _Unread(room: ChatService.publicRoom, onBrand: true),
-                          Icon(Icons.chevron_right_rounded, color: c.onBrand),
-                        ],
-                      ),
-                    ).animate().fadeIn(duration: 300.ms).slideY(begin: .1, end: 0),
-                    const SizedBox(height: 22),
-                    StreamBuilder<List<ChatGroup>>(
-                      stream: _groups,
-                      builder: (context, gs) {
-                        final all = gs.data ?? const <ChatGroup>[];
-                        final invited = all.where((g) => !g.joined).toList();
-                        final joined = all.where((g) => g.joined).toList();
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (invited.isNotEmpty) ...[
-                              SectionLabel('Undangan grup · ${invited.length}'),
-                              for (final g in invited)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: _InviteCard(
-                                    group: g,
-                                    from: people.where((p) => p.id == g.owner).firstOrNull?.name,
-                                    onAnswer: (ok) => _answer(g, ok),
-                                  ),
+                                child: Icon(Icons.groups_rounded, color: c.onBrand),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Ruang Umum', style: context.t.titleMedium!.copyWith(color: c.onBrand)),
+                                    Text(
+                                      'Ngobrol dengan semua pengguna Lapor Yuk',
+                                      style: context.t.bodySmall!.copyWith(color: Colors.white.withValues(alpha: .75)),
+                                    ),
+                                  ],
                                 ),
-                              const SizedBox(height: 14),
+                              ),
+                              const _Unread(room: ChatService.publicRoom, onBrand: true),
+                              Icon(Icons.chevron_right_rounded, color: c.onBrand),
                             ],
-                            SectionLabel(
-                              'Grup · ${joined.length}',
-                              trailing: Pressable(
-                                onTap: () => Navigator.of(context).push(softRoute(const GroupFormScreen())),
-                                child: Text('+ Buat grup', style: context.t.labelLarge!.copyWith(color: c.primary)),
-                              ),
-                            ),
-                            if (joined.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Text(
-                                  'Belum ada grup. Buat grup lalu undang rekan kerja; mereka bisa menerima atau menolak.',
-                                  style: context.t.bodySmall,
-                                ),
-                              ),
-                            for (final g in joined)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: AppCard(
-                                  onTap: () =>
-                                      Navigator.of(context)
-                                          .push(softRoute(ChatRoomScreen(room: g.room, title: g.name, group: g))),
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 44,
-                                        height: 44,
-                                        decoration: BoxDecoration(
-                                          color: c.primarySoft,
-                                          borderRadius: BorderRadius.circular(14),
-                                        ),
-                                        child: Icon(Icons.group_rounded, color: c.primary),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(child: Text(g.name, style: context.t.titleSmall)),
-                                      _Unread(room: g.room),
-                                      Icon(Icons.chevron_right_rounded, color: c.muted),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            const SizedBox(height: 14),
-                          ],
-                        );
-                      },
-                    ),
-                    SectionLabel(
-                      'Pengguna · ${people.length}'
-                      '${people.any((p) => p.onlineNow) ? ' · ${people.where((p) => p.onlineNow).length} online' : ''}',
-                    ),
-                    if (snap.connectionState == ConnectionState.waiting)
-                      const Center(
-                        child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()),
-                      )
-                    else if (people.isEmpty)
-                      const EmptyState(
-                        icon: Icons.person_search_rounded,
-                        title: 'Belum ada pengguna lain',
-                        message: 'Ajak rekan kerja memasang Lapor Yuk lalu menekan Sync di menu Chat.',
-                      )
-                    else
-                      for (final (i, p) in people.indexed)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: AppCard(
-                            onTap: () => Navigator.of(context).push(
-                              softRoute(
-                                ChatRoomScreen(room: ChatService.dmRoom(p.id), title: p.name, avatar: p.avatar),
-                              ),
-                            ),
-                            padding: const EdgeInsets.all(12),
-                            child: Row(
-                              children: [
-                                _Pic(avatar: p.avatar, size: 44, online: p.onlineNow),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(p.name, style: context.t.titleSmall),
-                                      Text(
-                                        [
-                                          p.onlineNow ? 'Online' : _seen(p.lastSeen),
-                                          p.position,
-                                          p.unit,
-                                        ].where((e) => (e ?? '').isNotEmpty).join(' · '),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: context.t.bodySmall,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                _Unread(room: ChatService.dmRoom(p.id)),
-                                Icon(Icons.chat_bubble_outline_rounded, color: c.muted, size: 20),
-                              ],
-                            ),
                           ),
-                        ).animate().fadeIn(delay: (30 * i.clamp(0, 10)).ms, duration: 250.ms),
-                  ],
+                        ).animate().fadeIn(duration: 300.ms).slideY(begin: .1, end: 0),
+                        const SizedBox(height: 22),
+                        StreamBuilder<List<ChatGroup>>(
+                          stream: _groups,
+                          builder: (context, gs) {
+                            final all = gs.data ?? const <ChatGroup>[];
+                            final invited = all.where((g) => !g.joined).toList();
+                            final joined = all.where((g) => g.joined).toList();
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (invited.isNotEmpty) ...[
+                                  SectionLabel('Undangan grup · ${invited.length}'),
+                                  for (final g in invited)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: _InviteCard(
+                                        group: g,
+                                        from: people.where((p) => p.id == g.owner).firstOrNull?.name,
+                                        onAnswer: (ok) => _answer(g, ok),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 14),
+                                ],
+                                SectionLabel(
+                                  'Grup · ${joined.length}',
+                                  trailing: Pressable(
+                                    onTap: () => Navigator.of(context).push(softRoute(const GroupFormScreen())),
+                                    child: Text('+ Buat grup', style: context.t.labelLarge!.copyWith(color: c.primary)),
+                                  ),
+                                ),
+                                if (joined.isEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Text(
+                                      'Belum ada grup. Buat grup lalu undang rekan kerja; mereka bisa menerima atau menolak.',
+                                      style: context.t.bodySmall,
+                                    ),
+                                  ),
+                                for (final g in joined)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: AppCard(
+                                      onTap: () =>
+                                          Navigator.of(context)
+                                              .push(softRoute(ChatRoomScreen(room: g.room, title: g.name, group: g))),
+                                      padding: const EdgeInsets.all(12),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 44,
+                                            height: 44,
+                                            decoration: BoxDecoration(
+                                              color: c.primarySoft,
+                                              borderRadius: BorderRadius.circular(14),
+                                            ),
+                                            child: Icon(Icons.group_rounded, color: c.primary),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(child: Text(g.name, style: context.t.titleSmall)),
+                                          _Unread(room: g.room),
+                                          Icon(Icons.chevron_right_rounded, color: c.muted),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(height: 14),
+                              ],
+                            );
+                          },
+                        ),
+                        if (incoming.isNotEmpty) ...[
+                          SectionLabel('Permintaan pertemanan · ${incoming.length}'),
+                          for (final cxn in incoming)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _RequestCard(
+                                person: byId[cxn.other] ?? ChatProfile(id: cxn.other, name: 'Pengguna'),
+                                onAnswer: (ok) =>
+                                    _respond(byId[cxn.other] ?? ChatProfile(id: cxn.other, name: 'Pengguna'), ok),
+                              ),
+                            ),
+                          const SizedBox(height: 14),
+                        ],
+                        SectionLabel(
+                          'Teman · ${friends.length}'
+                          '${friends.any((p) => p.onlineNow) ? ' · ${friends.where((p) => p.onlineNow).length} online' : ''}',
+                        ),
+                        if (friends.isEmpty)
+                          EmptyState(
+                            icon: Icons.group_add_rounded,
+                            title: 'Belum ada teman',
+                            message:
+                                'Ketuk ikon tambah teman di kanan atas untuk mencari pengguna dan mengirim permintaan.',
+                            action: AppButton(
+                              label: 'Cari teman',
+                              icon: Icons.person_add_alt_1_rounded,
+                              onTap: () => Navigator.of(context).push(softRoute(const AddFriendScreen())),
+                            ),
+                          )
+                        else
+                          for (final (i, p) in friends.indexed)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: AppCard(
+                                onTap: () => Navigator.of(context).push(
+                                  softRoute(
+                                    ChatRoomScreen(room: ChatService.dmRoom(p.id), title: p.name, avatar: p.avatar),
+                                  ),
+                                ),
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  children: [
+                                    _Pic(avatar: p.avatar, size: 44, online: p.onlineNow),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(p.name, style: context.t.titleSmall),
+                                          Text(
+                                            [
+                                              p.onlineNow ? 'Online' : _seen(p.lastSeen),
+                                              p.position,
+                                              p.unit,
+                                            ].where((e) => (e ?? '').isNotEmpty).join(' · '),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: context.t.bodySmall,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    _Unread(room: ChatService.dmRoom(p.id)),
+                                    Icon(Icons.chat_bubble_outline_rounded, color: c.muted, size: 20),
+                                  ],
+                                ),
+                              ),
+                            ).animate().fadeIn(delay: (30 * i.clamp(0, 10)).ms, duration: 250.ms),
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -1362,9 +1405,9 @@ class _PeoplePicker extends StatelessWidget {
   Widget build(BuildContext context) {
     if (people.isEmpty) {
       return const EmptyState(
-        icon: Icons.person_search_rounded,
-        title: 'Tidak ada yang bisa diundang',
-        message: 'Pengguna lain harus menekan Sync di menu Chat dulu.',
+        icon: Icons.group_add_rounded,
+        title: 'Belum ada teman untuk diundang',
+        message: 'Tambah teman dulu lewat ikon tambah teman di menu Chat.',
       );
     }
     return Column(
@@ -1398,7 +1441,7 @@ class GroupFormScreen extends StatefulWidget {
 class _GroupFormScreenState extends State<GroupFormScreen> {
   final _name = TextEditingController();
   final _picked = <String>{};
-  final _people = ChatService.people();
+  final _people = ChatService.friendProfiles();
   bool _saving = false;
 
   @override
@@ -1455,8 +1498,11 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
               decoration: const InputDecoration(hintText: 'Nama grup, mis. Tim Statistik Sosial'),
             ),
             const SizedBox(height: 8),
-            SectionLabel('Undang anggota${_picked.isEmpty ? '' : ' · ${_picked.length} dipilih'}'),
-            Text('Yang diundang akan melihat undangan dan bisa menerima atau menolak.', style: context.t.bodySmall),
+            SectionLabel('Undang teman${_picked.isEmpty ? '' : ' · ${_picked.length} dipilih'}'),
+            Text(
+              'Hanya teman yang bisa diundang. Mereka masih bisa menerima atau menolak.',
+              style: context.t.bodySmall,
+            ),
             const SizedBox(height: 6),
             if (snap.connectionState == ConnectionState.waiting)
               const Center(
@@ -1499,6 +1545,22 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   late final _members = ChatService.members(widget.group.id);
   final _people = ChatService.people();
   late String _name = widget.group.name;
+  List<ChatProfile> _friends = const [];
+  StreamSubscription<List<ChatProfile>>? _friendSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _friendSub = ChatService.friendProfiles().listen((v) {
+      if (mounted) setState(() => _friends = v);
+    });
+  }
+
+  @override
+  void dispose() {
+    _friendSub?.cancel();
+    super.dispose();
+  }
 
   bool get _owner => widget.group.owner == ChatService.uid;
 
@@ -1692,7 +1754,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     icon: Icons.person_add_alt_rounded,
                     style: BtnStyle.tonal,
                     expand: true,
-                    onTap: () => _invite(people.values.where((p) => !inGroup.contains(p.id)).toList()),
+                    onTap: () => _invite(_friends.where((p) => !inGroup.contains(p.id)).toList()),
                   ),
                   const SizedBox(height: 18),
                   SectionLabel('Anggota · ${joined.length}'),
@@ -1931,6 +1993,188 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Incoming friend request on the chat home: accept or decline.
+class _RequestCard extends StatelessWidget {
+  const _RequestCard({required this.person, required this.onAnswer});
+  final ChatProfile person;
+  final ValueChanged<bool> onAnswer;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          _Pic(avatar: person.avatar, size: 44),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(person.name, style: context.t.titleSmall),
+                Text(
+                  [person.position, person.unit].where((e) => (e ?? '').isNotEmpty).join(' · ').isEmpty
+                      ? 'Ingin berteman'
+                      : [person.position, person.unit].where((e) => (e ?? '').isNotEmpty).join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.t.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          IconBtn(icon: Icons.close_rounded, tooltip: 'Tolak', onTap: () => onAnswer(false)),
+          const SizedBox(width: 6),
+          IconBtn(
+            icon: Icons.check_rounded,
+            tooltip: 'Terima',
+            bg: context.c.brand,
+            color: context.c.onBrand,
+            onTap: () => onAnswer(true),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Directory of all users with their connection status. Send a request,
+/// cancel one, or accept an incoming one.
+class AddFriendScreen extends StatefulWidget {
+  const AddFriendScreen({super.key});
+
+  @override
+  State<AddFriendScreen> createState() => _AddFriendScreenState();
+}
+
+class _AddFriendScreenState extends State<AddFriendScreen> {
+  final _people = ChatService.people();
+  final _connections = ChatService.connections();
+  final _busy = <String>{};
+  String _q = '';
+
+  Future<void> _run(String id, Future<void> Function() action, String ok) async {
+    setState(() => _busy.add(id));
+    try {
+      await action();
+      if (mounted) toast(context, ok);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal: $e', icon: Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _busy.remove(id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Scaffold(
+      appBar: AppBar(
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: Center(
+            child: IconBtn(icon: Icons.arrow_back_rounded, onTap: () => Navigator.pop(context)),
+          ),
+        ),
+        leadingWidth: 60,
+        title: Text('Tambah teman', style: context.t.titleLarge),
+        centerTitle: true,
+      ),
+      body: StreamBuilder<List<Connection>>(
+        stream: _connections,
+        builder: (context, cs) {
+          final conns = {for (final x in cs.data ?? const <Connection>[]) x.other: x};
+          return StreamBuilder<List<ChatProfile>>(
+            stream: _people,
+            builder: (context, ps) {
+              final all = (ps.data ?? const <ChatProfile>[])
+                  .where((p) => _q.isEmpty || p.name.toLowerCase().contains(_q.toLowerCase()))
+                  .toList();
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                children: [
+                  TextField(
+                    onChanged: (v) => setState(() => _q = v),
+                    decoration: const InputDecoration(
+                      hintText: 'Cari nama pengguna…',
+                      prefixIcon: Icon(Icons.search_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (all.isEmpty)
+                    const EmptyState(
+                      icon: Icons.person_search_rounded,
+                      title: 'Tidak ada pengguna',
+                      message: 'Pengguna lain harus menekan Sync di menu Chat dulu.',
+                    )
+                  else
+                    for (final p in all)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: AppCard(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              _Pic(avatar: p.avatar, size: 44, online: p.onlineNow),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(p.name, style: context.t.titleSmall),
+                                    Text(
+                                      [p.position, p.unit].where((e) => (e ?? '').isNotEmpty).join(' · '),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: context.t.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _friendAction(c, p, conns[p.id]),
+                            ],
+                          ),
+                        ),
+                      ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _friendAction(AppColors c, ChatProfile p, Connection? cxn) {
+    if (_busy.contains(p.id)) {
+      return const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (cxn != null && cxn.accepted) {
+      return Tag('Teman', icon: Icons.check_circle_rounded, color: c.success);
+    }
+    if (cxn != null && cxn.incoming) {
+      return AppButton(
+        label: 'Terima',
+        style: BtnStyle.tonal,
+        onTap: () => _run(p.id, () => ChatService.respondConnect(p.id, true), 'Berteman dengan ${p.name}'),
+      );
+    }
+    if (cxn != null && cxn.outgoing) {
+      return AppButton(
+        label: 'Batalkan',
+        style: BtnStyle.ghost,
+        onTap: () => _run(p.id, () => ChatService.removeConnect(p.id), 'Permintaan dibatalkan'),
+      );
+    }
+    return AppButton(
+      label: 'Connect',
+      icon: Icons.person_add_alt_1_rounded,
+      onTap: () => _run(p.id, () => ChatService.requestConnect(p.id), 'Permintaan terkirim'),
     );
   }
 }

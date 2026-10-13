@@ -100,6 +100,21 @@ class GroupMember {
   final bool joined;
 }
 
+/// One friendship/request row seen from my side.
+class Connection {
+  const Connection({required this.requester, required this.addressee, required this.status, required this.me});
+  final String requester, addressee, status, me;
+
+  String get other => requester == me ? addressee : requester;
+  bool get accepted => status == 'accepted';
+
+  /// A pending request someone sent to me (I decide).
+  bool get incoming => status == 'pending' && addressee == me;
+
+  /// A pending request I sent, waiting for them.
+  bool get outgoing => status == 'pending' && requester == me;
+}
+
 class Story {
   const Story({required this.id, required this.author, required this.url, required this.at, this.path, this.caption});
   final int id;
@@ -120,6 +135,7 @@ abstract final class ChatService {
   /// badges on the hub Chat button and in the chat list.
   static final unread = ValueNotifier<Map<String, int>>(const {});
   static final invites = ValueNotifier<int>(0);
+  static final friendRequests = ValueNotifier<int>(0);
   static RealtimeChannel? _live;
   static Timer? _debounce;
 
@@ -138,7 +154,7 @@ abstract final class ChatService {
     _listen();
   }
 
-  static int get badge => unread.value.values.fold(0, (a, b) => a + b) + invites.value;
+  static int get badge => unread.value.values.fold(0, (a, b) => a + b) + invites.value + friendRequests.value;
 
   static void _listen() {
     if (!signedIn || _live != null) return;
@@ -157,6 +173,7 @@ abstract final class ChatService {
           filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: uid!),
           callback: later,
         )
+        .onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: 'connections', callback: later)
         .subscribe();
     refreshBadges();
   }
@@ -168,6 +185,8 @@ abstract final class ChatService {
       unread.value = {for (final r in rows) r['room'] as String: (r['n'] as num).toInt()};
       final inv = await _db.from('group_members').select('group_id').eq('user_id', uid!).eq('status', 'invited');
       invites.value = inv.length;
+      final req = await _db.from('connections').select('requester').eq('addressee', uid!).eq('status', 'pending');
+      friendRequests.value = req.length;
     } catch (_) {} // offline: keep the last known numbers
   }
 
@@ -259,6 +278,7 @@ abstract final class ChatService {
     _live = null;
     unread.value = const {};
     invites.value = 0;
+    friendRequests.value = 0;
     if (_ready && signedIn) await _db.auth.signOut();
   }
 
@@ -268,6 +288,60 @@ abstract final class ChatService {
         // Online first, each group still by name.
         return [...list.where((p) => p.onlineNow), ...list.where((p) => !p.onlineNow)];
       });
+
+  /// My connection rows (RLS returns only those involving me). Realtime, so
+  /// the friends list and request badges update live.
+  static Stream<List<Connection>> connections() => _db
+      .from('connections')
+      .stream(primaryKey: ['requester', 'addressee'])
+      .map(
+        (rows) => [
+          for (final r in rows)
+            Connection(
+              requester: r['requester'] as String,
+              addressee: r['addressee'] as String,
+              status: r['status'] as String,
+              me: uid ?? '',
+            ),
+        ],
+      );
+
+  /// Accepted friends as profiles (people() filtered by the connection list).
+  static Stream<List<ChatProfile>> friendProfiles() {
+    final ctrl = StreamController<List<ChatProfile>>();
+    List<ChatProfile>? ppl;
+    Set<String>? ids;
+    void emit() {
+      if (ppl != null && ids != null) {
+        ctrl.add([
+          for (final p in ppl!)
+            if (ids!.contains(p.id)) p,
+        ]);
+      }
+    }
+
+    final a = people().listen((v) {
+      ppl = v;
+      emit();
+    });
+    final b = connections().listen((v) {
+      ids = {for (final x in v.where((e) => e.accepted)) x.other};
+      emit();
+    });
+    ctrl.onCancel = () async {
+      await a.cancel();
+      await b.cancel();
+    };
+    return ctrl.stream;
+  }
+
+  static Future<String> requestConnect(String other) async =>
+      await _db.rpc('request_connection', params: {'other': other}) as String;
+
+  static Future<void> respondConnect(String other, bool accept) =>
+      _db.rpc('respond_connection', params: {'other': other, 'accept': accept});
+
+  static Future<void> removeConnect(String other) => _db.rpc('remove_connection', params: {'other': other});
 
   static Stream<List<ChatMessage>> messages(String room) => _db
       .from('chat')
