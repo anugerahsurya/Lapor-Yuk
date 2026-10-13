@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/dates.dart';
 import '../../core/quotes.dart';
 import '../../core/theme.dart';
+import '../../services/chat_service.dart';
 import '../../state/providers.dart';
 import '../sheets/todo_sheet.dart';
 import '../widgets/common.dart';
@@ -97,10 +98,14 @@ class HubScreen extends ConsumerWidget {
                         onTap: () => Navigator.of(context).push(softRoute(const PhotosScreen())),
                       ),
                       _MiniFeature(icon: Icons.picture_as_pdf_rounded, label: 'Rekap', onTap: () => openKinerja(2)),
-                      _MiniFeature(
-                        icon: Icons.forum_rounded,
-                        label: 'Chat',
-                        onTap: () => Navigator.of(context).push(softRoute(ChatHomeScreen(openProfile: openProfile))),
+                      ListenableBuilder(
+                        listenable: Listenable.merge([ChatService.unread, ChatService.invites]),
+                        builder: (context, _) => _MiniFeature(
+                          icon: Icons.forum_rounded,
+                          label: 'Chat',
+                          badge: ChatService.badge,
+                          onTap: () => Navigator.of(context).push(softRoute(ChatHomeScreen(openProfile: openProfile))),
+                        ),
                       ),
                     ],
                   ),
