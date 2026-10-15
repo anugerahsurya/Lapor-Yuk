@@ -13,6 +13,7 @@ import '../widgets/avatar.dart';
 import '../widgets/common.dart';
 import '../widgets/logo.dart';
 import 'greeting_screen.dart';
+import 'promo_screen.dart';
 
 /// First-run setup so anyone can use the app: welcome → personal data →
 /// avatar → permissions. Everything stays on the device.
@@ -98,7 +99,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Future<void> _finish() async {
     await ref.read(settingsProvider.notifier).finishOnboarding();
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(fadeRoute(const GreetingScreen()));
+    // First login: the intro video plays once, then the greeting.
+    Navigator.of(context).pushReplacement(fadeRoute(const PromoVideoScreen(next: GreetingScreen())));
   }
 
   @override

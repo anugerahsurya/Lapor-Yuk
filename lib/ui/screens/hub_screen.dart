@@ -13,10 +13,12 @@ import '../../services/chat_service.dart';
 import '../../state/providers.dart';
 import '../sheets/todo_sheet.dart';
 import '../widgets/common.dart';
+import '../widgets/logo.dart';
 import '../widgets/sky_header.dart';
 import 'camera_screen.dart';
 import 'chat_screen.dart';
 import 'photos_screen.dart';
+import 'promo_screen.dart';
 import 'todo_screen.dart';
 
 /// Home: living meadow, daily quote, feature hub and a "today" digest.
@@ -57,6 +59,8 @@ class HubScreen extends ConsumerWidget {
               children: [
                 enter(const _QuoteCard()),
                 const _UpdateBanner(),
+                const SizedBox(height: 12),
+                enter(const _PromoCard()),
                 const SizedBox(height: 22),
                 enter(const SectionLabel('Fitur')),
                 enter(
@@ -487,6 +491,41 @@ class _UpdateBannerState extends ConsumerState<_UpdateBanner> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Opens the 30 s promo video again (it auto-plays only on first login).
+class _PromoCard extends StatelessWidget {
+  const _PromoCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return AppCard(
+      onTap: () => Navigator.of(context).push(softRoute(const PromoVideoScreen())),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(color: kLogoBlue, borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 30),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Kenalan sama Lapor Yuk', style: context.t.titleSmall),
+                Text('Video 30 detik semua fitur', style: context.t.bodySmall),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: c.muted),
+        ],
       ),
     );
   }

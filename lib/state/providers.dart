@@ -95,6 +95,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   Future<void> finishOnboarding() => _p.setBool('onboarded', true);
 
+  /// The intro video plays once, right after the first-run setup.
+  bool get promoSeen => _p.getBool('promoSeen') ?? false;
+
+  Future<void> markPromoSeen() => _p.setBool('promoSeen', true);
+
   void setReminder({bool? on, int? minutes}) {
     if (on != null) _p.setBool('reminderOn', on);
     if (minutes != null) _p.setInt('reminderMinutes', minutes);
