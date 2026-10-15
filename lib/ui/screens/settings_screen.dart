@@ -444,7 +444,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
               children: [
                 const LogoTile(size: 40),
                 const SizedBox(height: 8),
-                Text('Lapor Yuk · v1.4', style: context.t.labelLarge),
+                Text('Lapor Yuk · v1.6', style: context.t.labelLarge),
                 Text('Bekerja penuh tanpa internet', style: context.t.bodySmall),
               ],
             ),
