@@ -6,12 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/dates.dart';
 import '../../core/theme.dart';
 import '../../services/chat_service.dart';
+import '../../services/watermark.dart';
 import '../widgets/avatar.dart';
 import '../widgets/common.dart';
+import '../widgets/masked_text.dart';
 
 /// Long side 1280 px, JPEG. Quality steps down until the file fits the
 /// 1 MB bucket limit; most phone photos end up around 150-300 KB.
@@ -34,9 +37,13 @@ Future<Uint8List> compressThumb(String path) async {
 String fmtSize(int bytes) =>
     bytes >= 1024 * 1024 ? '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB' : '${(bytes / 1024).ceil()} KB';
 
-/// Full-screen camera for stories; the gallery button picks an existing photo.
+/// 3:4 portrait camera for stories; the gallery button picks an existing photo.
+/// With [capture] it is a plain selfie camera (photostrip): no gallery, and it
+/// pops with the cropped JPEG path instead of opening the story composer.
 class StoryCameraScreen extends StatefulWidget {
-  const StoryCameraScreen({super.key});
+  const StoryCameraScreen({super.key, this.capture = false, this.title = 'Story · tampil 24 jam'});
+  final bool capture;
+  final String title;
 
   @override
   State<StoryCameraScreen> createState() => _StoryCameraScreenState();
@@ -81,7 +88,8 @@ class _StoryCameraScreenState extends State<StoryCameraScreen> with WidgetsBindi
     try {
       _cams = await availableCameras();
       if (_cams.isEmpty) throw CameraException('none', 'Kamera tidak ditemukan');
-      _camIndex = _cams.indexWhere((c) => c.lensDirection == CameraLensDirection.back).clamp(0, _cams.length - 1);
+      final lens = widget.capture ? CameraLensDirection.front : CameraLensDirection.back;
+      _camIndex = _cams.indexWhere((c) => c.lensDirection == lens).clamp(0, _cams.length - 1);
       await _start(_cams[_camIndex]);
     } on CameraException catch (e) {
       setState(
@@ -94,8 +102,9 @@ class _StoryCameraScreenState extends State<StoryCameraScreen> with WidgetsBindi
 
   Future<void> _start(CameraDescription d) async {
     final old = _cam;
-    // "high" (720p-1080p) is plenty for a story and keeps the shot quick.
-    final cam = CameraController(d, ResolutionPreset.high, enableAudio: false, imageFormatGroup: ImageFormatGroup.jpeg);
+    // "max" is the sensor's native 4:3 frame on most phones; 720p/1080p
+    // presets are 16:9 and would lose the top and bottom of a 3:4 crop.
+    final cam = CameraController(d, ResolutionPreset.max, enableAudio: false, imageFormatGroup: ImageFormatGroup.jpeg);
     _cam = cam;
     await old?.dispose();
     try {
@@ -119,7 +128,20 @@ class _StoryCameraScreenState extends State<StoryCameraScreen> with WidgetsBindi
     setState(() => _busy = true);
     try {
       final shot = await cam.takePicture();
-      await _compose(shot.path, temp: true);
+      final dir = await getTemporaryDirectory();
+      final out = await cropPortrait(
+        rawPath: shot.path,
+        outPath: '${dir.path}/shot_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        mirror: cam.description.lensDirection == CameraLensDirection.front,
+      );
+      try {
+        await File(shot.path).delete();
+      } catch (_) {}
+      if (widget.capture) {
+        if (mounted) Navigator.pop(context, out);
+      } else {
+        await _compose(out, temp: true);
+      }
     } catch (e) {
       if (mounted) toast(context, 'Gagal mengambil foto: $e', icon: Icons.error_outline_rounded);
     } finally {
@@ -152,13 +174,19 @@ class _StoryCameraScreenState extends State<StoryCameraScreen> with WidgetsBindi
         fit: StackFit.expand,
         children: [
           if (ready)
-            ClipRect(
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: cam.value.previewSize!.height,
-                  height: cam.value.previewSize!.width,
-                  child: CameraPreview(cam),
+            // What you see is what gets saved: a 3:4 portrait window.
+            Center(
+              child: AspectRatio(
+                aspectRatio: 3 / 4,
+                child: ClipRect(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: cam.value.previewSize!.height,
+                      height: cam.value.previewSize!.width,
+                      child: CameraPreview(cam),
+                    ),
+                  ),
                 ),
               ),
             )
@@ -189,9 +217,9 @@ class _StoryCameraScreenState extends State<StoryCameraScreen> with WidgetsBindi
                         onTap: () => Navigator.pop(context),
                       ),
                       const Spacer(),
-                      const Text(
-                        'Story · tampil 24 jam',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      Text(
+                        widget.title,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                       ),
                       const Spacer(),
                       const SizedBox(width: 44),
@@ -204,13 +232,16 @@ class _StoryCameraScreenState extends State<StoryCameraScreen> with WidgetsBindi
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      IconBtn(
-                        icon: Icons.photo_library_rounded,
-                        tooltip: 'Galeri',
-                        color: Colors.white,
-                        bg: Colors.black38,
-                        onTap: _busy ? null : _gallery,
-                      ),
+                      if (widget.capture)
+                        const SizedBox(width: 44)
+                      else
+                        IconBtn(
+                          icon: Icons.photo_library_rounded,
+                          tooltip: 'Galeri',
+                          color: Colors.white,
+                          bg: Colors.black38,
+                          onTap: _busy ? null : _gallery,
+                        ),
                       Pressable(
                         onTap: ready && !_busy ? _shoot : null,
                         scale: .88,
@@ -708,7 +739,7 @@ class _StoryViewerState extends State<StoryViewer> with SingleTickerProviderStat
                     if ((s.caption ?? '').isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: Text(
+                        child: MaskedText(
                           s.caption!,
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Colors.white, fontSize: 15),

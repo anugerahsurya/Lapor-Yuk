@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import '../core/sensitive.dart';
 import '../data/models.dart';
 import 'reminder_service.dart';
 
@@ -52,6 +53,7 @@ class ChatMessage {
     this.photoId,
     this.voicePath,
     this.voiceSecs,
+    this.stripId,
   });
   final int id;
   final String room, sender, body;
@@ -68,6 +70,9 @@ class ChatMessage {
   final String? voicePath;
   final int? voiceSecs;
 
+  /// Photostrip invitation ("Yuk foto bareng!").
+  final int? stripId;
+
   factory ChatMessage.fromRow(Map<String, dynamic> r) => ChatMessage(
     id: r['id'] as int,
     room: r['room'] as String,
@@ -79,6 +84,7 @@ class ChatMessage {
     photoId: r['photo_id'] as int?,
     voicePath: r['voice_path'] as String?,
     voiceSecs: (r['voice_secs'] as num?)?.toInt(),
+    stripId: r['strip_id'] as int?,
   );
 }
 
@@ -142,6 +148,7 @@ abstract final class ChatService {
   static final friendRequests = ValueNotifier<int>(0);
   static RealtimeChannel? _live;
   static Timer? _debounce;
+  static Timer? _seenTimer;
 
   static Future<void> init() async {
     if (_ready || !Env.chatReady) return;
@@ -176,6 +183,11 @@ abstract final class ChatService {
           callback: (p) {
             later(p);
             _notify(p.newRecord);
+            // Tells senders the message reached this phone (two grey ticks).
+            if (p.newRecord['sender'] != uid) {
+              _seenTimer?.cancel();
+              _seenTimer = Timer(const Duration(seconds: 1), _touch);
+            }
           },
         )
         .onPostgresChanges(
@@ -209,7 +221,9 @@ abstract final class ChatService {
       }
 
       final who = await name('users', sender, 'Pengguna');
-      final text = r['photo_id'] != null
+      final text = r['strip_id'] != null
+          ? 'Mengajak foto bareng'
+          : r['photo_id'] != null
           ? 'Mengirim foto'
           : r['voice_path'] != null
           ? 'Mengirim pesan suara'
@@ -219,7 +233,7 @@ abstract final class ChatService {
           : room.startsWith('grp:')
           ? (await name('groups', room.substring(4), 'Grup'), '$who: $text')
           : (who, text);
-      await ReminderService.chat(room.hashCode & 0x7fffffff, title, body);
+      await ReminderService.chat(room.hashCode & 0x7fffffff, title, maskSensitive(body));
     } catch (_) {}
   }
 

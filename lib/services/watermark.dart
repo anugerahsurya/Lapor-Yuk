@@ -234,3 +234,53 @@ Future<String> renderStamped({
     out.dispose();
   }
 }
+
+/// Center-crops a camera shot to a 3:4 portrait frame (stories, photostrip)
+/// without a stamp. Front-camera shots are flipped to match the preview.
+Future<String> cropPortrait({
+  required String rawPath,
+  required String outPath,
+  int maxSide = 1600,
+  bool mirror = false,
+}) async {
+  final buffer = await ui.ImmutableBuffer.fromUint8List(await File(rawPath).readAsBytes());
+  final codec = await ui.instantiateImageCodecWithSize(
+    buffer,
+    getTargetSize: (iw, ih) {
+      final k = math.min(1.0, (maxSide * 1.34) / math.max(iw, ih));
+      return ui.TargetImageSize(width: (iw * k).round());
+    },
+  );
+  final src = (await codec.getNextFrame()).image;
+  var cw = src.width.toDouble(), ch = src.height.toDouble();
+  if (cw / ch > 3 / 4) {
+    cw = ch * 3 / 4;
+  } else {
+    ch = cw * 4 / 3;
+  }
+  final scale = math.min(1.0, maxSide / ch);
+  final w = (cw * scale).round();
+  final h = (ch * scale).round();
+
+  final rec = ui.PictureRecorder();
+  final canvas = Canvas(rec);
+  if (mirror) {
+    canvas.translate(w.toDouble(), 0);
+    canvas.scale(-1, 1);
+  }
+  canvas.drawImageRect(
+    src,
+    Rect.fromLTWH((src.width - cw) / 2, (src.height - ch) / 2, cw, ch),
+    Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+    Paint()..filterQuality = FilterQuality.high,
+  );
+  final out = await rec.endRecording().toImage(w, h);
+  src.dispose();
+  try {
+    final rgba = (await out.toByteData(format: ui.ImageByteFormat.rawRgba))!.buffer.asUint8List();
+    await Native.saveJpeg(rgba: rgba, width: w, height: h, path: outPath, quality: 90);
+    return outPath;
+  } finally {
+    out.dispose();
+  }
+}

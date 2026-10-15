@@ -14,10 +14,13 @@ import '../../core/dates.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../services/chat_service.dart';
+import '../../services/photostrip_service.dart';
 import '../../state/providers.dart';
 import '../widgets/activity_card.dart';
 import '../widgets/avatar.dart';
 import '../widgets/common.dart';
+import '../widgets/masked_text.dart';
+import 'photostrip_screen.dart';
 import 'story_screen.dart';
 
 /// Rooms: "Ruang Umum" for everyone + direct messages with other users who
@@ -55,6 +58,7 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
       ChatService.refreshBadges();
       ChatService.purgeStories();
       ChatService.purgeChatMedia();
+      PhotostripService.purge();
     }
   }
 
@@ -433,7 +437,9 @@ class ChatRoomScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatRoomScreen> createState() => _ChatRoomScreenState();
 }
 
-enum _Tick { none, sent, read }
+/// sent: one grey tick. delivered: the recipient's app has been online since
+/// (two grey ticks). read: they opened the room (two coloured ticks).
+enum _Tick { none, sent, delivered, read }
 
 class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final _input = TextEditingController();
@@ -514,10 +520,20 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   ];
 
   _Tick _tick(ChatMessage m) {
-    if (m.sender != ChatService.uid) return _Tick.none;
+    final me = ChatService.uid;
+    if (m.sender != me) return _Tick.none;
     if (!_receipts) return _Tick.sent;
-    final others = widget.group == null ? 1 : _joined.length - 1;
-    return others > 0 && _readers(m).length >= others ? _Tick.read : _Tick.sent;
+    final others = widget.group == null
+        ? widget.room.substring(3).split(':').where((id) => id != me).toList()
+        : _joined.where((id) => id != me).toList();
+    if (others.isEmpty) return _Tick.sent;
+    final readers = _readers(m).toSet();
+    if (others.every(readers.contains)) return _Tick.read;
+    final seen = others.every((id) {
+      final last = _names[id]?.lastSeen;
+      return readers.contains(id) || (last != null && !last.isBefore(m.at));
+    });
+    return seen ? _Tick.delivered : _Tick.sent;
   }
 
   Future<void> _send() async {
@@ -536,7 +552,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 
   Future<void> _attachPhoto() async {
-    final src = await showModalBottomSheet<ImageSource>(
+    final src = await showModalBottomSheet<Object>(
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(
@@ -561,12 +577,31 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               title: const Text('Dari galeri'),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_front_rounded),
+              title: const Text('Photostrip bareng'),
+              subtitle: const Text('Foto bareng sampai 6 orang, hasil PNG 4R'),
+              onTap: () => Navigator.pop(ctx, 'strip'),
+            ),
           ],
         ),
       ),
     );
-    if (src == null) return;
-    final picked = await ImagePicker().pickImage(source: src, imageQuality: 100);
+    if (src == null || !mounted) return;
+    if (src == 'strip') {
+      final me = ChatService.uid;
+      final ids = widget.group == null
+          ? widget.room.substring(3).split(':').where((id) => id != me)
+          : _joined.where((id) => id != me);
+      await startPhotostrip(
+        context,
+        room: widget.room,
+        title: widget.group?.name ?? 'Foto Bareng',
+        candidates: [for (final id in ids) _names[id] ?? ChatProfile(id: id, name: 'Pengguna')],
+      );
+      return;
+    }
+    final picked = await ImagePicker().pickImage(source: src as ImageSource, imageQuality: 100);
     if (picked == null || !mounted) return;
     try {
       final jpeg = await compressStory(picked.path);
@@ -867,7 +902,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                           'Membalas ${_nameOf(reply.sender)}',
                           style: context.t.labelMedium!.copyWith(color: c.primary),
                         ),
-                        Text(reply.body, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.t.bodySmall),
+                        MaskedText(
+                          reply.body,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.t.bodySmall,
+                        ),
                       ],
                     ),
                   ),
@@ -1050,7 +1090,7 @@ class _Bubble extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(q.$1, style: context.t.labelSmall!.copyWith(color: mine ? Colors.white : c.primary)),
-                    Text(
+                    MaskedText(
                       q.$2,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -1070,10 +1110,12 @@ class _Bubble extends StatelessWidget {
                   Text('VN kedaluwarsa', style: context.t.bodyMedium!.copyWith(color: soft)),
                 ],
               )
+            else if (message.stripId != null)
+              StripBubble(stripId: message.stripId!, mine: mine)
             else if (message.photoId != null)
               _PhotoBubble(photoId: message.photoId!, mine: mine, caption: message.body, at: message.at)
             else
-              Text(message.body, style: context.t.bodyMedium!.copyWith(color: fg)),
+              MaskedText(message.body, style: context.t.bodyMedium!.copyWith(color: fg)),
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.bottomRight,
@@ -1087,7 +1129,7 @@ class _Bubble extends StatelessWidget {
                   if (tick != _Tick.none) ...[
                     const SizedBox(width: 3),
                     Icon(
-                      tick == _Tick.read ? Icons.done_all_rounded : Icons.done_rounded,
+                      tick == _Tick.sent ? Icons.done_rounded : Icons.done_all_rounded,
                       size: 14,
                       color: tick == _Tick.read ? c.accent : soft,
                     ),
@@ -2034,7 +2076,7 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
         if (caption != null)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(caption, style: context.t.bodyMedium!.copyWith(color: fg)),
+            child: MaskedText(caption, style: context.t.bodyMedium!.copyWith(color: fg)),
           ),
         Padding(
           padding: const EdgeInsets.only(top: 4),
