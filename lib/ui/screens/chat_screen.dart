@@ -239,15 +239,7 @@ class _ChatHomeScreenState extends ConsumerState<ChatHomeScreen> {
                                       padding: const EdgeInsets.all(12),
                                       child: Row(
                                         children: [
-                                          Container(
-                                            width: 44,
-                                            height: 44,
-                                            decoration: BoxDecoration(
-                                              color: c.primarySoft,
-                                              borderRadius: BorderRadius.circular(14),
-                                            ),
-                                            child: Icon(Icons.group_rounded, color: c.primary),
-                                          ),
+                                          _GroupPic(photo: g.photo, size: 44),
                                           const SizedBox(width: 12),
                                           Expanded(child: Text(g.name, style: context.t.titleSmall)),
                                           _Unread(room: g.room),
@@ -445,6 +437,7 @@ enum _Tick { none, sent, read }
 
 class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final _input = TextEditingController();
+  final _focus = FocusNode();
   final _subs = <StreamSubscription>[];
   List<ChatMessage> _msgs = const [];
   bool _loaded = false;
@@ -465,12 +458,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   bool get _receipts => widget.room != ChatService.publicRoom;
   bool get _canPhoto => widget.room != ChatService.publicRoom;
 
-  /// DM: the one recipient x2. Group: 2 x members. (Ruang Umum has no photos.)
-  int get _photoBudget => widget.group != null ? 2 * (_joined.isEmpty ? 1 : _joined.length) : 2;
-
   @override
   void initState() {
     super.initState();
+    ChatService.openRoom = widget.room;
     _subs.addAll([
       ChatService.messages(widget.room).listen((m) {
         // Every batch that arrives while the room is open counts as read.
@@ -507,6 +498,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     _recTimer?.cancel();
     _rec.dispose();
     _input.dispose();
+    _focus.dispose();
+    if (ChatService.openRoom == widget.room) ChatService.openRoom = null;
     ChatService.markRead(widget.room);
     super.dispose();
   }
@@ -553,7 +546,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
               child: Text(
-                'Foto sekilas: bisa dilihat 2x tiap orang, lalu terhapus.',
+                'Foto tampil di chat selama 2 hari, lalu terhapus otomatis.',
                 style: ctx.t.bodySmall,
                 textAlign: TextAlign.center,
               ),
@@ -577,7 +570,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     if (picked == null || !mounted) return;
     try {
       final jpeg = await compressStory(picked.path);
-      await ChatService.sendPhoto(widget.room, jpeg, maxViews: _photoBudget);
+      await ChatService.sendPhoto(widget.room, jpeg, replyTo: _replying?.id);
+      if (mounted) setState(() => _replying = null);
     } catch (e) {
       if (mounted) toast(context, 'Gagal mengirim foto: $e', icon: Icons.error_outline_rounded);
     }
@@ -693,7 +687,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     if (pick.startsWith('r:')) {
       await _react(m, pick.substring(2));
     } else if (pick == 'reply') {
-      setState(() => _replying = m);
+      _quote(m);
     } else if (pick == 'copy') {
       await Clipboard.setData(ClipboardData(text: m.body));
       if (mounted) toast(context, 'Pesan disalin');
@@ -714,6 +708,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         if (mounted) toast(context, 'Gagal menghapus: $e', icon: Icons.error_outline_rounded);
       }
     }
+  }
+
+  void _quote(ChatMessage m) {
+    setState(() => _replying = m);
+    _focus.requestFocus();
   }
 
   void _readInfo(ChatMessage m) {
@@ -769,16 +768,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         titleSpacing: 4,
         title: Row(
           children: [
-            if (_multi)
+            if (widget.group != null)
+              _GroupPic(photo: widget.group!.photo, size: 36)
+            else if (_multi)
               Container(
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(color: c.brand, borderRadius: BorderRadius.circular(11)),
-                child: Icon(
-                  widget.group != null ? Icons.group_rounded : Icons.groups_rounded,
-                  color: c.onBrand,
-                  size: 20,
-                ),
+                child: Icon(Icons.groups_rounded, color: c.onBrand, size: 20),
               )
             else
               _Pic(avatar: widget.avatar, size: 36),
@@ -844,6 +841,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                             tick: _tick(m),
                             onLongPress: () => _actions(m),
                             onReact: (e) => _react(m, e),
+                            onSwipe: () => _quote(m),
                           ),
                         ],
                       );
@@ -916,15 +914,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   : Row(
                       children: [
                         if (_canPhoto)
-                          IconBtn(
-                            icon: Icons.add_photo_alternate_rounded,
-                            tooltip: 'Foto sekilas',
-                            onTap: _attachPhoto,
-                          ),
+                          IconBtn(icon: Icons.add_photo_alternate_rounded, tooltip: 'Kirim foto', onTap: _attachPhoto),
                         if (_canPhoto) const SizedBox(width: 6),
                         Expanded(
                           child: TextField(
                             controller: _input,
+                            focusNode: _focus,
                             minLines: 1,
                             maxLines: 5,
                             textCapitalization: TextCapitalization.sentences,
@@ -970,6 +965,7 @@ class _Bubble extends StatelessWidget {
     required this.tick,
     required this.onLongPress,
     required this.onReact,
+    required this.onSwipe,
     this.sender,
     this.quote,
   });
@@ -986,6 +982,7 @@ class _Bubble extends StatelessWidget {
   final _Tick tick;
   final VoidCallback onLongPress;
   final ValueChanged<String> onReact;
+  final VoidCallback onSwipe;
 
   @override
   Widget build(BuildContext context) {
@@ -1074,7 +1071,7 @@ class _Bubble extends StatelessWidget {
                 ],
               )
             else if (message.photoId != null)
-              _PhotoBubble(photoId: message.photoId!, mine: mine, caption: message.body)
+              _PhotoBubble(photoId: message.photoId!, mine: mine, caption: message.body, at: message.at)
             else
               Text(message.body, style: context.t.bodyMedium!.copyWith(color: fg)),
             const SizedBox(height: 2),
@@ -1143,48 +1140,144 @@ class _Bubble extends StatelessWidget {
           );
 
     final s = sender;
-    return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: s == null
-          ? Padding(padding: const EdgeInsets.only(top: 3), child: withReactions)
-          : Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _Pic(avatar: s.avatar, size: 20),
-                      const SizedBox(width: 6),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .62),
-                        child: Text(
-                          s.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.t.labelMedium!.copyWith(color: c.primary, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      if ((s.position ?? '').isNotEmpty) ...[
+    return _SwipeReply(
+      onReply: onSwipe,
+      child: Align(
+        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+        child: s == null
+            ? Padding(padding: const EdgeInsets.only(top: 3), child: withReactions)
+            : Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _Pic(avatar: s.avatar, size: 20),
                         const SizedBox(width: 6),
-                        Flexible(
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .62),
                           child: Text(
-                            s.position!,
+                            s.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: context.t.labelSmall!.copyWith(color: c.muted, fontSize: 10.5),
+                            style: context.t.labelMedium!.copyWith(color: c.primary, fontWeight: FontWeight.w700),
                           ),
                         ),
+                        if ((s.position ?? '').isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              s.position!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.t.labelSmall!.copyWith(color: c.muted, fontSize: 10.5),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  withReactions,
-                ],
+                    ),
+                    const SizedBox(height: 3),
+                    withReactions,
+                  ],
+                ),
+              ),
+      ),
+    ).animate().fadeIn(duration: 200.ms).slideY(begin: .2, end: 0);
+  }
+}
+
+/// Drag a bubble to the right to quote it, like WhatsApp.
+class _SwipeReply extends StatefulWidget {
+  const _SwipeReply({required this.child, required this.onReply});
+  final Widget child;
+  final VoidCallback onReply;
+
+  @override
+  State<_SwipeReply> createState() => _SwipeReplyState();
+}
+
+class _SwipeReplyState extends State<_SwipeReply> {
+  static const _trigger = 56.0;
+  double _dx = 0;
+  bool _dragging = false;
+
+  void _reset() => setState(() {
+    _dx = 0;
+    _dragging = false;
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = (_dx / _trigger).clamp(0.0, 1.0);
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: (_) => setState(() => _dragging = true),
+      onHorizontalDragUpdate: (d) {
+        final next = (_dx + d.delta.dx).clamp(0.0, _trigger * 1.4);
+        if (_dx < _trigger && next >= _trigger) HapticFeedback.lightImpact();
+        setState(() => _dx = next);
+      },
+      onHorizontalDragEnd: (_) {
+        if (_dx >= _trigger) widget.onReply();
+        _reset();
+      },
+      onHorizontalDragCancel: _reset,
+      child: Stack(
+        alignment: Alignment.centerLeft,
+        children: [
+          Opacity(
+            opacity: p,
+            child: Transform.scale(
+              scale: .6 + .4 * p,
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(color: context.c.primarySoft, shape: BoxShape.circle),
+                child: Icon(Icons.reply_rounded, size: 18, color: context.c.primary),
               ),
             ),
-    ).animate().fadeIn(duration: 200.ms).slideY(begin: .2, end: 0);
+          ),
+          AnimatedContainer(
+            duration: _dragging ? Duration.zero : const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            transform: Matrix4.translationValues(_dx, 0, 0),
+            child: widget.child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Group photo, or the default group icon when none is set.
+class _GroupPic extends StatelessWidget {
+  const _GroupPic({required this.photo, required this.size});
+  final String? photo;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final fallback = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: c.primarySoft, borderRadius: BorderRadius.circular(size * .32)),
+      child: Icon(Icons.group_rounded, color: c.primary, size: size * .5),
+    );
+    if (photo == null) return fallback;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * .32),
+      child: Image.network(
+        ChatService.groupPhotoUrl(photo!),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        cacheWidth: (size * 3).round(),
+        errorBuilder: (_, _, _) => fallback,
+      ),
+    );
   }
 }
 
@@ -1545,6 +1638,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   late final _members = ChatService.members(widget.group.id);
   final _people = ChatService.people();
   late String _name = widget.group.name;
+  late String? _photo = widget.group.photo;
+  bool _uploading = false;
   List<ChatProfile> _friends = const [];
   StreamSubscription<List<ChatProfile>>? _friendSub;
 
@@ -1598,6 +1693,21 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       if (mounted) setState(() => _name = trimmed);
     } catch (e) {
       if (mounted) toast(context, 'Gagal mengubah nama: $e', icon: Icons.error_outline_rounded);
+    }
+  }
+
+  Future<void> _changePhoto() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 100);
+    if (picked == null || !mounted) return;
+    setState(() => _uploading = true);
+    try {
+      final jpeg = await compressThumb(picked.path);
+      final path = await ChatService.setGroupPhoto(widget.group.id, jpeg, old: _photo);
+      if (mounted) setState(() => _photo = path);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal mengganti foto: $e', icon: Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _uploading = false);
     }
   }
 
@@ -1749,6 +1859,34 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
                 children: [
+                  Center(
+                    child: Pressable(
+                      onTap: _owner && !_uploading ? _changePhoto : null,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          _GroupPic(photo: _photo, size: 96),
+                          if (_uploading)
+                            const Positioned.fill(child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                          if (_owner)
+                            Positioned(
+                              right: -4,
+                              bottom: -4,
+                              child: Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: context.c.brand,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: context.c.bg, width: 2),
+                                ),
+                                child: Icon(Icons.photo_camera_rounded, size: 16, color: context.c.onBrand),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   AppButton(
                     label: 'Undang anggota',
                     icon: Icons.person_add_alt_rounded,
@@ -1784,66 +1922,61 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
 String _fmtSecs(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 
-/// View-limited photo. Recipients tap to open (one view); the sender sees a
-/// plain marker. The image is shown from memory, then deleted server-side once
-/// its view budget runs out.
+/// Photo shown inline for [ChatService.photoLife]; tap for full screen.
 class _PhotoBubble extends StatefulWidget {
-  const _PhotoBubble({required this.photoId, required this.mine, required this.caption});
+  const _PhotoBubble({required this.photoId, required this.mine, required this.caption, required this.at});
   final int photoId;
   final bool mine;
   final String caption;
+  final DateTime at;
 
   @override
   State<_PhotoBubble> createState() => _PhotoBubbleState();
 }
 
 class _PhotoBubbleState extends State<_PhotoBubble> {
-  int? _left;
-  bool _busy = false;
+  String? _url;
+  bool _loaded = false;
+
+  DateTime get _until => widget.at.add(ChatService.photoLife);
 
   @override
   void initState() {
     super.initState();
-    if (!widget.mine) _refresh();
-  }
-
-  Future<void> _refresh() async {
-    final n = await ChatService.photoLeft(widget.photoId);
-    if (mounted) setState(() => _left = n);
-  }
-
-  Future<void> _open() async {
-    if (_busy || widget.mine || (_left ?? 0) <= 0) return;
-    setState(() => _busy = true);
-    try {
-      final path = await ChatService.photoPath(widget.photoId);
-      if (path == null) {
-        if (mounted) toast(context, 'Foto sudah tidak tersedia');
-        return;
-      }
-      final bytes = await ChatService.viewPhoto(widget.photoId, path);
-      if (bytes == null) {
-        if (mounted) toast(context, 'Foto sudah tidak tersedia');
-        return;
-      }
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(16),
-          child: GestureDetector(
-            onTap: () => Navigator.pop(ctx),
-            child: InteractiveViewer(child: Image.memory(bytes)),
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) toast(context, 'Gagal membuka: $e', icon: Icons.error_outline_rounded);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-      _refresh();
+    if (DateTime.now().isBefore(_until)) {
+      _load();
+    } else {
+      _loaded = true;
     }
+  }
+
+  Future<void> _load() async {
+    String? url;
+    try {
+      url = await ChatService.photoUrl(widget.photoId);
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _url = url;
+        _loaded = true;
+      });
+    }
+  }
+
+  void _open() {
+    final url = _url;
+    if (url == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(ctx),
+          child: InteractiveViewer(child: Image.network(url)),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1851,47 +1984,66 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
     final c = context.c;
     final fg = widget.mine ? c.onBrand : c.ink;
     final soft = widget.mine ? Colors.white.withValues(alpha: .75) : c.muted;
-    final left = _left ?? 0;
-    final gone = !widget.mine && left <= 0;
-    return Pressable(
-      onTap: _open,
-      child: Container(
-        width: 190,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: widget.mine ? Colors.white.withValues(alpha: .14) : c.surface2,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(gone ? Icons.visibility_off_rounded : Icons.photo_rounded, color: fg, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Foto sekilas', style: context.t.titleSmall!.copyWith(color: fg)),
-                ),
-                if (_busy) SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: fg)),
-              ],
+    final url = _url;
+    final left = _until.difference(DateTime.now());
+    final caption = widget.caption.isNotEmpty && widget.caption != 'Foto' ? widget.caption : null;
+
+    if (_loaded && url == null) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.hide_image_outlined, size: 16, color: soft),
+          const SizedBox(width: 6),
+          Text('Foto sudah kedaluwarsa', style: context.t.bodyMedium!.copyWith(color: soft)),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: _open,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 220,
+              height: 220,
+              child: url == null
+                  ? Container(
+                      color: widget.mine ? Colors.white.withValues(alpha: .14) : c.surface2,
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: fg),
+                      ),
+                    )
+                  : Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      cacheWidth: 660,
+                      errorBuilder: (_, _, _) => Container(
+                        color: c.surface2,
+                        alignment: Alignment.center,
+                        child: Icon(Icons.broken_image_outlined, color: c.muted),
+                      ),
+                    ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              widget.mine
-                  ? 'Terkirim. Tiap orang bisa lihat 2x.'
-                  : gone
-                  ? 'Tidak bisa dilihat lagi'
-                  : 'Ketuk untuk lihat · sisa $left',
-              style: context.t.bodySmall!.copyWith(color: soft),
-            ),
-            if (widget.caption.isNotEmpty && widget.caption != 'Foto')
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(widget.caption, style: context.t.bodyMedium!.copyWith(color: fg)),
-              ),
-          ],
+          ),
         ),
-      ),
+        if (caption != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(caption, style: context.t.bodyMedium!.copyWith(color: fg)),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            left.inHours >= 1 ? 'Terhapus dalam ${left.inHours} jam' : 'Terhapus sebentar lagi',
+            style: context.t.labelSmall!.copyWith(color: soft, fontSize: 10, letterSpacing: 0),
+          ),
+        ),
+      ],
     );
   }
 }

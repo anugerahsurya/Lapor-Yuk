@@ -24,6 +24,13 @@ Future<Uint8List> compressStory(String path) async {
   throw StateError('Foto tidak bisa dikompres');
 }
 
+/// Square-ish 320 px thumbnail for a group photo, usually 15-40 KB.
+Future<Uint8List> compressThumb(String path) async {
+  final out = await FlutterImageCompress.compressWithFile(path, minWidth: 320, minHeight: 320, quality: 70);
+  if (out == null || out.length > 300 * 1024) throw StateError('Foto tidak bisa dikompres');
+  return out;
+}
+
 String fmtSize(int bytes) =>
     bytes >= 1024 * 1024 ? '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB' : '${(bytes / 1024).ceil()} KB';
 

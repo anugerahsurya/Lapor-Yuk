@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
 import '../data/models.dart';
+import 'reminder_service.dart';
 
 class ChatProfile {
   const ChatProfile({
@@ -60,7 +61,7 @@ class ChatMessage {
   /// Set when this message replies to a story.
   final String? storyPath;
 
-  /// View-limited photo attached to this message; null once it is used up.
+  /// Photo attached to this message; null once it is purged (after 2 days).
   final int? photoId;
 
   /// Voice note; [voicePath] goes null after 3 days ("VN kedaluwarsa").
@@ -85,8 +86,11 @@ class ChatMessage {
 const reactionEmojis = ['\u{1F44D}', '\u{2764}\u{FE0F}', '\u{1F602}', '\u{1F62E}', '\u{1F622}', '\u{1F64F}'];
 
 class ChatGroup {
-  const ChatGroup({required this.id, required this.name, required this.owner, required this.joined});
+  const ChatGroup({required this.id, required this.name, required this.owner, required this.joined, this.photo});
   final String id, name, owner;
+
+  /// Storage path in the group_photos bucket.
+  final String? photo;
 
   /// false = invitation still waiting for an answer.
   final bool joined;
@@ -165,7 +169,15 @@ abstract final class ChatService {
 
     _live = _db
         .channel('badges')
-        .onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'chat', callback: later)
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'chat',
+          callback: (p) {
+            later(p);
+            _notify(p.newRecord);
+          },
+        )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -176,6 +188,39 @@ abstract final class ChatService {
         .onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: 'connections', callback: later)
         .subscribe();
     refreshBadges();
+  }
+
+  /// Room currently on screen; no notification for its messages.
+  static String? openRoom;
+  static final _names = <String, String>{};
+
+  /// Local notification for a new message. Rides on the realtime channel, so
+  /// it only fires while the app process is alive (foreground or recently
+  /// backgrounded); push with the app closed would need FCM.
+  static Future<void> _notify(Map<String, dynamic> r) async {
+    final room = r['room'] as String?;
+    final sender = r['sender'] as String?;
+    if (room == null || sender == null || sender == uid || room == openRoom) return;
+    try {
+      Future<String> name(String table, String id, String fallback) async {
+        if (_names[id] case final n?) return n;
+        final row = await _db.from(table).select('name').eq('id', id).maybeSingle();
+        return _names[id] = row?['name'] as String? ?? fallback;
+      }
+
+      final who = await name('users', sender, 'Pengguna');
+      final text = r['photo_id'] != null
+          ? 'Mengirim foto'
+          : r['voice_path'] != null
+          ? 'Mengirim pesan suara'
+          : r['body'] as String? ?? '';
+      final (title, body) = room == publicRoom
+          ? ('Ruang Umum', '$who: $text')
+          : room.startsWith('grp:')
+          ? (await name('groups', room.substring(4), 'Grup'), '$who: $text')
+          : (who, text);
+      await ReminderService.chat(room.hashCode & 0x7fffffff, title, body);
+    } catch (_) {}
   }
 
   static Future<void> refreshBadges() async {
@@ -367,54 +412,30 @@ abstract final class ChatService {
   static const photoBucket = 'chat_media';
   static const voiceBucket = 'chat_voice';
 
-  /// Sends a view-limited photo. [jpeg] must already be compressed.
-  /// [maxViews] = 2 for a DM, 2 x member count for a group.
-  static Future<void> sendPhoto(String room, Uint8List jpeg, {required int maxViews, String? caption}) async {
+  /// Photo lifetime in the chat; the database hides it after this too.
+  static const photoLife = Duration(days: 2);
+
+  /// Sends a photo that stays in the room for [photoLife]. [jpeg] must already be compressed.
+  static Future<void> sendPhoto(String room, Uint8List jpeg, {String? caption, int? replyTo}) async {
     final path = '${uid!}/${DateTime.now().millisecondsSinceEpoch}.jpg';
     await _db.storage
         .from(photoBucket)
         .uploadBinary(path, jpeg, fileOptions: const FileOptions(contentType: 'image/jpeg'));
-    final row = await _db
-        .from('chat_photos')
-        .insert({'room': room, 'path': path, 'max_views': maxViews})
-        .select()
-        .single();
+    final row = await _db.from('chat_photos').insert({'room': room, 'path': path}).select().single();
     final text = caption?.trim() ?? '';
-    await _db.from('chat').insert({'room': room, 'body': text.isEmpty ? 'Foto' : text, 'photo_id': row['id']});
+    await _db.from('chat').insert({
+      'room': room,
+      'body': text.isEmpty ? 'Foto' : text,
+      'photo_id': row['id'],
+      'reply_to': ?replyTo,
+    });
   }
 
-  /// Opens a view-limited photo once. Returns its bytes if still allowed, or
-  /// null when the viewer has no views left or the photo is gone. Deletes the
-  /// Storage file when the last allowed view is used.
-  static Future<Uint8List?> viewPhoto(int photoId, String path) async {
-    final res = (await _db.rpc('view_photo', params: {'pid': photoId}) as List).cast<Map<String, dynamic>>();
-    if (res.isEmpty || res.first['allowed'] != true) return null;
-    Uint8List? bytes;
-    try {
-      bytes = await _db.storage.from(photoBucket).download(path);
-    } catch (_) {}
-    if (res.first['deleted'] == true) {
-      final gone = res.first['gone_path'] as String? ?? path;
-      try {
-        await _db.storage.from(photoBucket).remove([gone]);
-      } catch (_) {}
-    }
-    return bytes;
-  }
-
-  /// How many views the current user has left on [photoId] (0 when exhausted).
-  static Future<int> photoLeft(int photoId) async {
-    try {
-      return (await _db.rpc('photo_left', params: {'pid': photoId}) as num).toInt();
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  /// The Storage path of a still-live photo (null once used up).
-  static Future<String?> photoPath(int photoId) async {
+  /// Public URL of a photo still within [photoLife], or null once it expired.
+  static Future<String?> photoUrl(int photoId) async {
     final r = await _db.from('chat_photos').select('path').eq('id', photoId).maybeSingle();
-    return r?['path'] as String?;
+    final path = r?['path'] as String?;
+    return path == null ? null : _db.storage.from(photoBucket).getPublicUrl(path);
   }
 
   static Future<void> sendVoice(String room, String filePath, int seconds, {int? replyTo}) async {
@@ -489,7 +510,7 @@ abstract final class ChatService {
         final joined = {for (final r in rows) r['group_id'] as String: r['status'] == 'member'};
         final gs = await _db
             .from('groups')
-            .select('id, name, owner')
+            .select('id, name, owner, photo')
             .inFilter('id', joined.keys.toList())
             .order('name');
         return [
@@ -499,6 +520,7 @@ abstract final class ChatService {
               name: g['name'] as String,
               owner: g['owner'] as String,
               joined: joined[g['id']] ?? false,
+              photo: g['photo'] as String?,
             ),
         ];
       });
@@ -548,6 +570,26 @@ abstract final class ChatService {
       _db.from('groups').update({'name': name.trim()}).eq('id', groupId);
 
   static Future<void> deleteGroup(String groupId) => _db.from('groups').delete().eq('id', groupId);
+
+  static const groupPhotoBucket = 'group_photos';
+
+  static String groupPhotoUrl(String path) => _db.storage.from(groupPhotoBucket).getPublicUrl(path);
+
+  /// Owner only. [jpeg] must already be compressed (bucket limit 300 KB).
+  /// Returns the new path; the previous file is removed.
+  static Future<String> setGroupPhoto(String groupId, Uint8List jpeg, {String? old}) async {
+    final path = '$groupId/${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await _db.storage
+        .from(groupPhotoBucket)
+        .uploadBinary(path, jpeg, fileOptions: const FileOptions(contentType: 'image/jpeg'));
+    await _db.from('groups').update({'photo': path}).eq('id', groupId);
+    if (old != null) {
+      try {
+        await _db.storage.from(groupPhotoBucket).remove([old]);
+      } catch (_) {}
+    }
+    return path;
+  }
 
   static Stream<List<Story>> stories() =>
       _db.from('stories').stream(primaryKey: ['id']).order('created_at', ascending: false).map((rows) {

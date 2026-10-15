@@ -156,6 +156,25 @@ abstract final class ReminderService {
     }
   }
 
+  static const _chatDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'pesan_chat',
+      'Pesan chat',
+      channelDescription: 'Pesan baru dari teman, grup, dan Ruang Umum',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: 'ic_stat_sun',
+      color: Color(0xFF2F5FEA),
+      category: AndroidNotificationCategory.message,
+    ),
+  );
+
+  /// One notification per room; a newer message replaces the older one.
+  static Future<void> chat(int id, String title, String body) async {
+    await init();
+    await _plugin.show(id: id, title: title, body: body, notificationDetails: _chatDetails);
+  }
+
   /// Fires one right away so the user can see what it looks like.
   static Future<void> test() async {
     await init();
