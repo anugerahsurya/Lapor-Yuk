@@ -127,7 +127,7 @@
     .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 18px 0 4px; }
     .chips span { font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 10%, transparent); color: var(--brand); }
     body.malam .chips span { background: rgba(134, 164, 255, .12); color: #9db4ff; }
-    body.malam .card.ituang .chips span { background: rgba(240, 180, 138, .12); color: #F0B48A; }
+    body.malam .card.ituang .chips span { background: rgba(255, 160, 18, .12); color: #FFA012; }
 
     details { margin-top: 16px; text-align: left; border-top: 1px solid var(--line); padding-top: 12px; }
     summary { cursor: pointer; list-style: none; font-weight: 700; font-size: 14px; color: var(--ink); display: flex; justify-content: space-between; align-items: center; }
@@ -144,9 +144,9 @@
     }
 
     @media (min-width: 900px) { main { grid-template-columns: repeat(2, minmax(0, 420px)); align-items: stretch; } }
-    .card.ituang { --brand: #D9824B; animation-delay: .12s; }
-    .card.ituang .logo { filter: drop-shadow(0 10px 18px rgba(217, 130, 75, .35)); }
-    body.malam .card.ituang h1 b { color: #F0B48A; }
+    .card.ituang { --brand: #FFA012; animation-delay: .12s; }
+    .card.ituang .logo { filter: drop-shadow(0 10px 18px rgba(255, 160, 18, .35)); }
+    body.malam .card.ituang h1 b { color: #FFA012; }
     @media (max-height: 640px) { main { padding-bottom: 18vh; } .chips { display: none; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
   </style>
@@ -266,7 +266,7 @@
     </div>
 
     <div class="card ituang">
-      <svg class="logo" aria-label="Logo Ituang" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108"><rect width="108" height="108" rx="25" fill="#D9824B"/><g fill="#FBF8F4"><rect x="40" y="78" width="28" height="4" rx="2"/><rect x="50.5" y="58" width="7" height="22"/><circle cx="54" cy="44" r="19"/><circle cx="39" cy="52" r="13"/><circle cx="69" cy="52" r="13"/></g><g fill="#D9824B"><circle cx="45" cy="42" r="5.5"/><circle cx="62" cy="37" r="5.5"/><circle cx="57" cy="55" r="5.5"/></g><g fill="none" stroke="#FBF8F4" stroke-width="1"><circle cx="45" cy="42" r="3.3"/><circle cx="62" cy="37" r="3.3"/><circle cx="57" cy="55" r="3.3"/></g></svg>
+      <svg class="logo" aria-label="Logo Ituang" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108"><rect width="108" height="108" rx="24" fill="#FFA012"/><rect x="36" y="40" width="36" height="20" rx="6" fill="#FFFFFF" opacity="0.75"/><line x1="42" y1="45" x2="66" y2="45" stroke="#FFA012" stroke-width="2"/><path d="M 28 54 L 28 74 A 14 14 0 0 0 42 88 L 66 88 A 14 14 0 0 0 80 74 L 80 54 A 6 6 0 0 0 74 48 Q 54 56 34 48 A 6 6 0 0 0 28 54 Z" fill="#FFFFFF"/><path d="M 36 62 Q 54 69 72 62" stroke="#FFA012" stroke-width="2.5" stroke-linecap="round" fill="none"/><circle cx="54" cy="34" r="15" fill="#FFFFFF"/><circle cx="54" cy="34" r="9.5" fill="none" stroke="#FFA012" stroke-width="2.2"/><circle cx="54" cy="34" r="4" fill="#FFA012"/></svg>
       <h1><b>i</b>tuang</h1>
       <p class="tag">Catat uang masuk &amp; keluar, atur anggaran per kategori, dan menabung untuk impianmu.</p>
 
@@ -274,10 +274,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
         Unduh untuk Android
       </a>
-      <div class="meta"><span>Versi 1.1.0</span><span>·</span><span>±75 MB</span><span>·</span><span>Android 7.0+</span><span>·</span><span>Gratis</span></div>
+      <div class="meta"><span>Versi 1.2.0</span><span>·</span><span>±75 MB</span><span>·</span><span>Android 7.0+</span><span>·</span><span>Gratis</span></div>
 
       <div class="chips">
-        <span>100% offline</span><span>Budgeting</span><span>Celengan &amp; Impian</span><span>Rekap PDF</span><span>Backup JSON</span>
+        <span>100% offline</span><span>Kalender Cepat</span><span>Biaya Admin Transfer</span><span>Bank Default</span><span>Budgeting</span><span>Celengan</span>
       </div>
 
       <details>
