@@ -2,8 +2,20 @@
   "cleanUrls": true,
   "headers": [
     {
+      "source": "/version-ituang.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
       "source": "/download/LaporYuk.apk",
       "headers": [
+    {
+      "source": "/version-ituang.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
         {
           "key": "Content-Type",
           "value": "application/vnd.android.package-archive"
@@ -21,6 +33,12 @@
     {
       "source": "/download/Ituang.apk",
       "headers": [
+    {
+      "source": "/version-ituang.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
         {
           "key": "Content-Type",
           "value": "application/vnd.android.package-archive"
@@ -38,6 +56,12 @@
     {
       "source": "/(.*)",
       "headers": [
+    {
+      "source": "/version-ituang.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
         {
           "key": "X-Content-Type-Options",
           "value": "nosniff"
