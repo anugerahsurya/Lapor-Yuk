@@ -1,7 +1,7 @@
 {
-  "version": "1.5.1",
-  "versionCode": 11,
+  "version": "1.5.2",
+  "versionCode": 12,
   "url": "https://github.com/anugerahsurya/Lapor-Yuk/raw/main/landing/download/Ituang.apk",
-  "notes": "Impor anggaran persen atau rupiah, grafik anggaran horizontal, pilihan font Inter/Instrument Sans/Plus Jakarta Sans, jarak kartu emas, ikon aksi berwarna lembut, tombol Ekspor PDF yang mudah ditemukan, logo dan palet PDF terbaru.",
-  "sha256": "a824c280dad316924340cd5252a8e3de728ae433b5dde94c60e4606a3999ff9a"
+  "notes": "Kalender lebih ringkas, pos anggaran dikelompokkan dengan subtotal, dan tombol halaman memiliki ruang di atas navigasi bawah.",
+  "sha256": "b5f77bdfb4d79713e6b843bdcc9c3ad5cedb3f9077624ba16b9e0db13445c45f"
 }
