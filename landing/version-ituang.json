@@ -1,7 +1,7 @@
 {
-  "version": "1.4.0",
-  "versionCode": 9,
+  "version": "1.5.0",
+  "versionCode": 10,
   "url": "https://github.com/anugerahsurya/Lapor-Yuk/raw/main/landing/download/Ituang.apk",
-  "notes": "Rencana pembelian lintas bulan, pencatatan emas dan laba/rugi dengan harga manual, widget Android dengan izin per widget, serta perbaikan tampilan dan backup.",
-  "sha256": "2dec78646c4a458902ca883a56244fc28e7ef7811c9a617406a21c2976baac20"
+  "notes": "Impor anggaran persen atau rupiah dengan pratinjau, target tabungan dan cadangan bulanan, daftar transaksi berikon, navigasi Anggaran yang lebih mudah, dan perbaikan Statistik pada teks besar.",
+  "sha256": "b56c6f5068a77308ec9e392f276269e4a3c68fbc5c3e5fdcbec7791fc3d31ee1"
 }
